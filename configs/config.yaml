@@ -1,0 +1,121 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# ALPR Engine - Configuration (LEAD Edition)
+# Fichier de configuration centralisé
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Environnement: development | staging | production
+env: development
+
+# ───────────────────────────────────────────────────────────────────────────────
+# DATABASE
+# ───────────────────────────────────────────────────────────────────────────────
+database:
+  # Mode: sqlite | postgres
+  mode: sqlite
+  
+  # SQLite (development)
+  sqlite_path: ./data/alpr.db
+  
+  # PostgreSQL (production)
+  postgres:
+    host: ${DB_HOST:localhost}
+    port: ${DB_PORT:5432}
+    name: ${DB_NAME:alpr}
+    user: ${DB_USER:alpr}
+    password: ${DB_PASSWORD:}
+
+# ───────────────────────────────────────────────────────────────────────────────
+# STORAGE (S3)
+# ───────────────────────────────────────────────────────────────────────────────
+storage:
+  # Mode: local | s3
+  mode: local
+  
+  # Local storage
+  local_path: ./data/storage
+  
+  # S3 / MinIO / Scaleway
+  s3:
+    endpoint: ${S3_ENDPOINT:}
+    access_key: ${S3_ACCESS_KEY:}
+    secret_key: ${S3_SECRET_KEY:}
+    region: ${S3_REGION:us-east-1}
+    buckets:
+      captures: alpr-captures
+      dataset: alpr-dataset
+
+# ───────────────────────────────────────────────────────────────────────────────
+# MLFLOW
+# ───────────────────────────────────────────────────────────────────────────────
+mlflow:
+  tracking_uri: ${MLFLOW_TRACKING_URI:./mlruns}
+  experiment_prefix: alpr
+
+# ───────────────────────────────────────────────────────────────────────────────
+# RAY SERVE
+# ───────────────────────────────────────────────────────────────────────────────
+ray:
+  # Mode: local | serve
+  mode: local
+  address: auto
+  http_port: 8000
+
+# ───────────────────────────────────────────────────────────────────────────────
+# AIRFLOW
+# ───────────────────────────────────────────────────────────────────────────────
+airflow:
+  # Seuil minimum d'images pour déclencher le retraining
+  min_dataset_size: 500
+  
+  # DAG schedule
+  retrain_schedule: "@daily"
+
+# ───────────────────────────────────────────────────────────────────────────────
+# MODELS
+# ───────────────────────────────────────────────────────────────────────────────
+models:
+  # Chemins des modèles
+  paths:
+    yolo_plate: models/best_model_detection_plaque.pt
+    yolo_vehicle: models/yolov8s.pt
+    efficientnet: models/best_model_efficientNet_finetune.pth
+  
+  # Classes de marques (22 marques EU)
+  brand_classes:
+    - audi
+    - bmw
+    - citroen
+    - dacia
+    - fiat
+    - ford
+    - honda
+    - hyundai
+    - kia
+    - mazda
+    - mercedes
+    - nissan
+    - opel
+    - peugeot
+    - renault
+    - seat
+    - skoda
+    - suzuki
+    - toyota
+    - volkswagen
+    - volvo
+    - other
+  
+  # Seuils de confiance
+  thresholds:
+    detection: 0.5
+    ocr: 0.6
+    brand: 0.7
+
+# ───────────────────────────────────────────────────────────────────────────────
+# GRADIO
+# ───────────────────────────────────────────────────────────────────────────────
+gradio:
+  server_name: "0.0.0.0"
+  server_port: 7860
+  share: false
+  debug: false
