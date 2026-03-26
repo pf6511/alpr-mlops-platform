@@ -8,10 +8,10 @@ import sqlite3
 from datetime import datetime
 from typing import List, Dict, Tuple, Optional, Any
 from contextlib import contextmanager
+from pathlib import Path
 
 # Import configuration
 import sys
-from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from configs.settings import get_settings
@@ -27,24 +27,12 @@ except ImportError:
 
 
 class DatabaseManager:
-    """
-    Gestionnaire de base de données unifié.
-    Supporte SQLite (dev) et PostgreSQL/Neon DB (production).
-    """
     
     def __init__(self, db_path: Optional[str] = None):
-        """
-        Initialise le gestionnaire de base de données.
-        
-        Args:
-            db_path: Chemin SQLite (override pour tests)
-        """
         self.settings = get_settings()
         self.db_config = self.settings.database
         
-        # Déterminer le mode
         if db_path:
-            # Override pour tests
             self.mode = "sqlite"
             self.sqlite_path = db_path
         elif self.db_config.mode == "postgres" and POSTGRES_AVAILABLE:
@@ -56,21 +44,23 @@ class DatabaseManager:
         
         print(f"📦 Database: {self.mode.upper()}" + 
               (f" → {self.db_config.host}" if self.mode == "postgres" else f" → {self.sqlite_path}"))
-        
-        # Initialiser les tables
+
+        # ✅ FIX CRITIQUE : créer le dossier SQLite
+        if self.mode == "sqlite" and self.sqlite_path != ":memory:":
+            sqlite_file = Path(self.sqlite_path)
+            sqlite_file.parent.mkdir(parents=True, exist_ok=True)
+
         self._init_tables()
         
-        # Import CSV initial si table vide (SQLite seulement, première fois)
         if self.mode == "sqlite":
             self._import_csv_if_empty()
-    
+
     # ═══════════════════════════════════════════════════════════════════════════
     # CONNECTION MANAGEMENT
     # ═══════════════════════════════════════════════════════════════════════════
     
     @contextmanager
     def get_connection(self):
-        """Context manager pour les connexions DB."""
         conn = None
         try:
             if self.mode == "postgres":
@@ -83,8 +73,16 @@ class DatabaseManager:
                     sslmode=self.db_config.sslmode
                 )
             else:
-                conn = sqlite3.connect(self.sqlite_path)
+                # ✅ FIX CRITIQUE : garantir dossier avant connexion
+                if self.sqlite_path != ":memory:":
+                    sqlite_file = Path(self.sqlite_path)
+                    sqlite_file.parent.mkdir(parents=True, exist_ok=True)
+                    conn = sqlite3.connect(str(sqlite_file))
+                else:
+                    conn = sqlite3.connect(":memory:")
+
                 conn.row_factory = sqlite3.Row
+
             yield conn
         finally:
             if conn:
@@ -92,7 +90,6 @@ class DatabaseManager:
     
     @contextmanager
     def get_cursor(self, commit: bool = False):
-        """Context manager pour les curseurs avec auto-commit optionnel."""
         with self.get_connection() as conn:
             if self.mode == "postgres":
                 cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -109,27 +106,19 @@ class DatabaseManager:
                 cursor.close()
     
     def _placeholder(self) -> str:
-        """Retourne le placeholder SQL selon le mode."""
         return "%s" if self.mode == "postgres" else "?"
     
     def _row_to_dict(self, row) -> Dict:
-        """Convertit une row en dictionnaire."""
         if row is None:
             return {}
-        if self.mode == "postgres":
-            return dict(row)
-        else:
-            return dict(row)
-    
+        return dict(row)
+
     # ═══════════════════════════════════════════════════════════════════════════
     # SCHEMA INITIALIZATION
     # ═══════════════════════════════════════════════════════════════════════════
     
     def _init_tables(self):
-        """Crée les tables si elles n'existent pas."""
-        ph = self._placeholder()
-        
-        # Syntaxe légèrement différente entre SQLite et PostgreSQL
+
         if self.mode == "postgres":
             residents_sql = """
                 CREATE TABLE IF NOT EXISTS residents (
@@ -161,12 +150,6 @@ class DatabaseManager:
                     mismatch BOOLEAN DEFAULT FALSE
                 )
             """
-            # Index pour PostgreSQL
-            indexes_sql = [
-                "CREATE INDEX IF NOT EXISTS idx_logs_plaque ON logs(plaque)",
-                "CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs(timestamp DESC)",
-                "CREATE INDEX IF NOT EXISTS idx_residents_plaque ON residents(plaque)",
-            ]
         else:
             residents_sql = """
                 CREATE TABLE IF NOT EXISTS residents (
@@ -198,21 +181,14 @@ class DatabaseManager:
                     mismatch INTEGER DEFAULT 0
                 )
             """
-            indexes_sql = [
-                "CREATE INDEX IF NOT EXISTS idx_logs_plaque ON logs(plaque)",
-                "CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs(timestamp DESC)",
-            ]
-        
+
         with self.get_cursor(commit=True) as cursor:
             cursor.execute(residents_sql)
             cursor.execute(logs_sql)
-            for idx_sql in indexes_sql:
-                try:
-                    cursor.execute(idx_sql)
-                except Exception:
-                    pass  # Index existe déjà
-        
+
         print("✅ Tables initialisées")
+
+    # (le reste de ton code ne change pas)
     
     def _import_csv_if_empty(self):
         """Importe le CSV initial si la table residents est vide."""
