@@ -85,23 +85,17 @@ class TestDatabase:
     def test_database_init(self):
         """Test initialisation DB."""
         from src.data.database import DatabaseManager
-        import tempfile
         
-        with tempfile.TemporaryDirectory() as tmpdir:
-            db_path = f"{tmpdir}/test.db"
-            db = DatabaseManager(db_path=db_path)
-            assert db is not None
+        db = DatabaseManager()
+        assert db is not None
     
     def test_database_whitelist(self):
         """Test récupération whitelist."""
         from src.data.database import DatabaseManager
-        import tempfile
         
-        with tempfile.TemporaryDirectory() as tmpdir:
-            db_path = f"{tmpdir}/test.db"
-            db = DatabaseManager(db_path=db_path)
-            whitelist = db.get_whitelist()
-            assert isinstance(whitelist, list)
+        db = DatabaseManager()
+        whitelist = db.get_whitelist()
+        assert isinstance(whitelist, list)
 
 
 class TestMismatchDetector:
