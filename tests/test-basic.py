@@ -29,7 +29,7 @@ class TestImports:
         from src.data.storage import get_storage
         # Just test imports work
         assert DatabaseManager is not None
-        assert get_storage is not Non
+        assert get_storage is not None
     
     def test_import_models(self):
         """Test import models."""
