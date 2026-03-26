@@ -39,8 +39,8 @@ jobs:
         run: python -m compileall .
 
       - name: Lint
-        run: ruff check .github tests
-
+        run: ruff check .github tests airflow
+      
       - name: Lancer les tests
         env:
           PYTHONPATH: ${{ github.workspace }}
