@@ -39,7 +39,7 @@ jobs:
         run: python -m compileall .
 
       - name: Lint
-        run: ruff check .
+        run: ruff check .github tests
 
       - name: Lancer les tests
         run: pytest -q
