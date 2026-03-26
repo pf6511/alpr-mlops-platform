@@ -43,7 +43,6 @@ build/
 *.spec
 
 # Data (monté en volume)
-data/outputs/
 mlruns/
 *.db
 
