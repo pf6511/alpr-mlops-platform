@@ -1,0 +1,22 @@
+services:
+  mlflow:
+    image: python:3.11-slim
+    container_name: mlflow-server
+    working_dir: /app
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/app/data
+    environment:
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
+    command: >
+      bash -c "pip install mlflow boto3 psycopg2-binary &&
+      mkdir -p /app/data &&
+      mlflow server
+      --backend-store-uri sqlite:////app/data/mlflow.db
+      --default-artifact-root s3://alpr-artefact/artefacts/
+      --host 0.0.0.0
+      --port 8080
+      --allowed-hosts host.docker.internal,host.docker.internal:8080,localhost,localhost:8080,127.0.0.1,127.0.0.1:8080"

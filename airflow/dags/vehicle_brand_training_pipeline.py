@@ -59,13 +59,19 @@ def build_brand_dataset_version(**context):
 
 def train_vehicle_brand_model(**context):
     """
-    Appelle ton vrai script train_vehicle_brand_model.py
+    Appelle le script train_vehicle_brand_model.py
     qui doit :
     - entraîner le classifieur marque
     - logguer dans MLflow
     - écrire metrics.json et run_info.json
     """
-    manifest = context["ti"].xcom_pull(task_ids="build_brand_dataset_version", key="dataset_manifest")
+    manifest = context["ti"].xcom_pull(
+        task_ids="build_brand_dataset_version",
+        key="dataset_manifest"
+    )
+
+    if not manifest:
+        raise ValueError("dataset_manifest introuvable dans XCom")
 
     output_dir = f"/tmp/{manifest['dataset_version']}"
     os.makedirs(output_dir, exist_ok=True)
@@ -84,7 +90,26 @@ def train_vehicle_brand_model(**context):
 
     print("[train_vehicle_brand_model] Running command:")
     print(" ".join(cmd))
-    subprocess.run(cmd, check=True)
+
+    result = subprocess.run(
+        cmd,
+        text=True,
+        capture_output=True
+    )
+
+    print("[train_vehicle_brand_model] Return code:", result.returncode)
+    print("[train_vehicle_brand_model] STDOUT:")
+    print(result.stdout)
+    print("[train_vehicle_brand_model] STDERR:")
+    print(result.stderr)
+
+    if result.returncode != 0:
+        raise RuntimeError(
+            "train_vehicle_brand_model.py a échoué.\n"
+            f"Return code: {result.returncode}\n\n"
+            f"STDOUT:\n{result.stdout}\n\n"
+            f"STDERR:\n{result.stderr}"
+        )
 
     metrics_path = os.path.join(output_dir, "metrics.json")
     run_info_path = os.path.join(output_dir, "run_info.json")
