@@ -42,6 +42,9 @@ jobs:
       - name: Lint
         run: ruff check .github tests airflow
       
+      - name: Créer le fichier .env CI
+        run: echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" > docker/.env
+
       - name: Build containers
         run: docker compose -f docker/docker-compose.yml build
 
@@ -51,22 +54,25 @@ jobs:
       - name: Wait for service
         run: |
           echo "Waiting for service..."
-          for i in {1..10}; do
-            if curl -f http://localhost:7860; then
-              echo "Service is up!"
+          for i in {1..20}; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:7860 || true)
+            if [ "$STATUS" = "200" ]; then
+              echo "Service is up! (HTTP $STATUS)"
               exit 0
             fi
-            sleep 3
+            echo "  attempt $i/20 — HTTP $STATUS"
+            sleep 5
           done
           echo "Service failed to start"
-          docker compose logs
+          docker compose -f docker/docker-compose.yml logs alpr-engine --tail 50
           exit 1
-
-      - name: Stop containers
-        if: always()
-        run: docker compose -f docker/docker-compose.yml down
 
       - name: Lancer les tests
         env:
           PYTHONPATH: ${{ github.workspace }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: pytest -q
+
+      - name: Stop containers
+        if: always()
+        run: docker compose -f docker/docker-compose.yml down
