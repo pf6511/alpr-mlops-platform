@@ -26,13 +26,19 @@ class TestImports:
     def test_import_data(self):
         """Test import data layer."""
         from src.data.database import DatabaseManager
+        from src.data.storage import get_storage
         # Just test imports work
         assert DatabaseManager is not None
+        assert get_storage is not Non
     
     def test_import_models(self):
         """Test import models."""
         from src.models.pipeline import ALPRPipeline
+        from src.models.mismatch_detector import MismatchDetector
+        from src.models.mlflow_client import MLflowManager
         assert ALPRPipeline is not None
+        assert MLflowManager is not None
+        assert MismatchDetector is not None
     
     def test_import_utils(self):
         """Test import utils."""
