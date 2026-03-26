@@ -25,14 +25,14 @@ except ImportError:
     NUMPY_AVAILABLE = False
 
 try:
-    from scr.data.database import DatabaseManager
+    from src.data.database import DatabaseManager
     DB_AVAILABLE = True
 except ImportError:
     DB_AVAILABLE = False
 
 try:
-    from scr.data.storage import get_storage
-    STORAGE_AVAILABLE = True
+    from src.data.storage import get_storage
+    STORAGE_AVAILABLE = False
 except ImportError:
     STORAGE_AVAILABLE = False
 
