@@ -85,7 +85,10 @@ class MismatchDetector:
         
         # File d'attente en mémoire (backup si DB non dispo)
         self._queue: List[MismatchRecord] = []
-        
+
+        # IDs des logs déjà traités (validés/rejetés) dans cette session
+        self._validated_ids: set = set()
+
         # Stats
         self._stats = {
             'total_detected': 0,
@@ -247,10 +250,12 @@ class MismatchDetector:
                 logs = self.db.get_mismatch_logs(limit=limit)
                 records = []
                 for log in logs:
+                    if log['id'] in self._validated_ids:
+                        continue
                     # Récupérer la marque déclarée depuis residents
                     resident = self.db.get_plate_with_brand(log['plaque'])
                     declared = resident.get('marque_declaree', '') if resident else ''
-                    
+
                     records.append(MismatchRecord(
                         plaque=log['plaque'],
                         marque_predite=log.get('marque_predite', ''),
@@ -298,9 +303,11 @@ class MismatchDetector:
         """
         try:
             record.status = "validated"
+            if record.log_id is not None:
+                self._validated_ids.add(record.log_id)
             self._stats['pending'] -= 1
             self._stats['validated'] += 1
-            
+
             # Sauvegarder vers le dataset labellisé
             if record.image_path and self.storage:
                 # Copier vers labeled/
@@ -338,9 +345,11 @@ class MismatchDetector:
         """
         try:
             record.status = "rejected"
+            if record.log_id is not None:
+                self._validated_ids.add(record.log_id)
             self._stats['pending'] -= 1
             self._stats['rejected'] += 1
-            
+
             return True, f"✅ Rejeté: {record.plaque} ({reason})"
             
         except Exception as e:

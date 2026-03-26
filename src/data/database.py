@@ -31,19 +31,29 @@ class DatabaseManager:
     def __init__(self, db_path: Optional[str] = None):
         self.settings = get_settings()
         self.db_config = self.settings.database
-        
+
+        # Support DATABASE_URL direct (NeonDB, Heroku, etc.)
+        self.db_url = os.environ.get('DATABASE_URL')
+
         if db_path:
             self.mode = "sqlite"
             self.sqlite_path = db_path
+            self.db_url = None
+        elif self.db_url and POSTGRES_AVAILABLE:
+            self.mode = "postgres"
+            self.sqlite_path = None
         elif self.db_config.mode == "postgres" and POSTGRES_AVAILABLE:
             self.mode = "postgres"
             self.sqlite_path = None
         else:
             self.mode = "sqlite"
             self.sqlite_path = self.db_config.sqlite_path
-        
-        print(f"📦 Database: {self.mode.upper()}" + 
-              (f" → {self.db_config.host}" if self.mode == "postgres" else f" → {self.sqlite_path}"))
+
+        if self.mode == "postgres":
+            host_info = self.db_url.split("@")[1].split("/")[0] if self.db_url else self.db_config.host
+            print(f"📦 Database: POSTGRES → {host_info}")
+        else:
+            print(f"📦 Database: SQLITE → {self.sqlite_path}")
 
         # ✅ FIX CRITIQUE : créer le dossier SQLite
         if self.mode == "sqlite" and self.sqlite_path != ":memory:":
@@ -64,14 +74,17 @@ class DatabaseManager:
         conn = None
         try:
             if self.mode == "postgres":
-                conn = psycopg2.connect(
-                    host=self.db_config.host,
-                    port=self.db_config.port,
-                    dbname=self.db_config.name,
-                    user=self.db_config.user,
-                    password=self.db_config.password,
-                    sslmode=self.db_config.sslmode
-                )
+                if self.db_url:
+                    conn = psycopg2.connect(self.db_url)
+                else:
+                    conn = psycopg2.connect(
+                        host=self.db_config.host,
+                        port=self.db_config.port,
+                        dbname=self.db_config.name,
+                        user=self.db_config.user,
+                        password=self.db_config.password,
+                        sslmode=self.db_config.sslmode
+                    )
             else:
                 # ✅ FIX CRITIQUE : garantir dossier avant connexion
                 if self.sqlite_path != ":memory:":

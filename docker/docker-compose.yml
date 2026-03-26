@@ -20,11 +20,7 @@ services:
       - ENV=production
       - PYTHONPATH=/app
       - DB_MODE=postgres
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_NAME=alpr
-      - DB_USER=alpr
-      - DB_PASSWORD=${DB_PASSWORD:-alpr_secret}
+      - DATABASE_URL=${DATABASE_URL}
       - STORAGE_MODE=s3
       - S3_ENDPOINT=http://minio:9000
       - S3_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
@@ -46,8 +42,6 @@ services:
       - ../pipelines:/app/pipelines:ro
       - ../app.py:/app/app.py:ro
     depends_on:
-      postgres:
-        condition: service_healthy
       minio:
         condition: service_healthy
       mlflow:
