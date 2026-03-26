@@ -1,6 +1,6 @@
 
 import re
-from utils.database import DatabaseManager
+from src.data.database import DatabaseManager
 
 class AccessController:
     """
@@ -29,7 +29,7 @@ class AccessController:
         """
         self.allowlist.clear()
         try:
-            authorized_plates = self.db.get_authorized_plates()
+            authorized_plates = self.db.get_whitelist()
             for plate in authorized_plates:
                 normalized = self.normalize(plate)
                 if normalized:

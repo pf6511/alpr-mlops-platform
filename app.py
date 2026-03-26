@@ -601,28 +601,28 @@ with gr.Blocks(css=custom_css, title="ALPR Engine - LEAD Edition") as demo:
             
             def add_resident(plaque, marque, nom, prenom, tel, adresse, ville, cp, age, abo, acces):
                 try:
-                    db.add_resident(
-                        plaque=plaque,
-                        nom=nom,
-                        prenom=prenom,
-                        age=int(age),
-                        telephone=tel,
-                        adresse=adresse,
-                        ville=ville,
-                        code_postal=cp,
-                        abonnement="oui" if abo else "non",
-                        acces="oui" if acces else "non",
-                        marque_declaree=marque
-                    )
+                    db.add_resident({
+                        'plaque': plaque,
+                        'nom': nom,
+                        'prenom': prenom,
+                        'age': int(age),
+                        'telephone': tel,
+                        'adresse': adresse,
+                        'ville': ville,
+                        'code_postal': cp,
+                        'abonnement': "oui" if abo else "non",
+                        'acces': "oui" if acces else "non",
+                        'marque_declaree': marque
+                    })
                     return f"✅ Résident {prenom} {nom} ajouté!", get_residents_df()
                 except Exception as e:
                     return f"❌ Erreur: {e}", get_residents_df()
             
             def get_residents_df():
                 try:
-                    whitelist = db.get_whitelist()
+                    residents = db.get_all_residents() 
                     data = []
-                    for r in whitelist[:50]:
+                    for r in residents[:50]:
                         data.append({
                             'ID': r.get('id', ''),
                             'Plaque': r.get('plaque', ''),
@@ -633,6 +633,7 @@ with gr.Blocks(css=custom_css, title="ALPR Engine - LEAD Edition") as demo:
                         })
                     return pd.DataFrame(data)
                 except Exception as e:
+                    print(f"Error get_residents_df: {e}")
                     return pd.DataFrame()
             
             add_btn.click(

@@ -40,6 +40,11 @@ services:
       - ../models:/app/models:ro
       - ../outputs:/app/outputs
       - alpr-data:/app/data
+          # AJOUTER CES LIGNES pour dev :
+      - ../src:/app/src:ro
+      - ../configs:/app/configs:ro
+      - ../pipelines:/app/pipelines:ro
+      - ../app.py:/app/app.py:ro
     depends_on:
       postgres:
         condition: service_healthy

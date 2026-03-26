@@ -23,6 +23,7 @@ database:
     name: ${DB_NAME:alpr}
     user: ${DB_USER:alpr}
     password: ${DB_PASSWORD:}
+    sslmode: ${DB_SSLMODE:prefer}
 
 # ───────────────────────────────────────────────────────────────────────────────
 # STORAGE (S3)
