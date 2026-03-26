@@ -54,9 +54,6 @@ logs/
 .DS_Store
 Thumbs.db
 
-# Docker
-docker/
-!docker/Dockerfile
 
 # Kubernetes & Helm (pas besoin dans l'image)
 k8s/
