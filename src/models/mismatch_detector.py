@@ -94,7 +94,19 @@ class MismatchDetector:
             'rejected': 0,
             'exported': 0
         }
+    def _normalize_brand(self, brand: str) -> str:
+        """Normalize brand name to lowercase and handle variants."""
+        brand_lower = brand.lower().strip()
         
+        # Handle common variants
+        variants = {
+            'vw': 'volkswagen',
+            'mercedes-benz': 'mercedes',
+            'bmw': 'bmw',
+            # Add other variants as needed
+        }
+        
+        return variants.get(brand_lower, brand_lower)
         print("✅ MismatchDetector initialisé")
     
     # ═══════════════════════════════════════════════════════════════════════════
