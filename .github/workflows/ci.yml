@@ -41,6 +41,30 @@ jobs:
       - name: Lint
         run: ruff check .github tests airflow
       
+      - name: Build containers
+        run: docker compose -f docker/docker-compose.yml build
+
+      - name: Start containers
+        run: docker compose -f docker/docker-compose.yml up -d
+
+      - name: Wait for service
+        run: |
+          echo "Waiting for service..."
+          for i in {1..10}; do
+            if curl -f http://localhost:7860; then
+              echo "Service is up!"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "Service failed to start"
+          docker compose logs
+          exit 1
+
+      - name: Stop containers
+        if: always()
+        run: docker compose -f docker/docker-compose.yml down
+
       - name: Lancer les tests
         env:
           PYTHONPATH: ${{ github.workspace }}
