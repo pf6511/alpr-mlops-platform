@@ -38,6 +38,7 @@ class DatabaseSettings:
     name: str = "alpr"
     user: str = "alpr"
     password: str = ""
+    sslmode: str = "prefer" 
 
 
 @dataclass
@@ -179,6 +180,7 @@ def _create_settings_from_config(config: Dict) -> Settings:
         name=os.environ.get('DB_NAME', pg_config.get('name', 'alpr')),
         user=os.environ.get('DB_USER', pg_config.get('user', 'alpr')),
         password=os.environ.get('DB_PASSWORD', pg_config.get('password', '')),
+        sslmode=os.environ.get('DB_SSLMODE', pg_config.get('sslmode', 'prefer')),
     )
     
     # S3

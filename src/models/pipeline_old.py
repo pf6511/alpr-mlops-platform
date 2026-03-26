@@ -17,6 +17,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from configs.settings import get_settings
+from pathlib import Path
 
 MODELS_DIR = Path("models")
 
@@ -58,6 +59,7 @@ try:
     TIMM_AVAILABLE = True
 except ImportError:
     TIMM_AVAILABLE = False
+    print("⚠️ timm non installé - EfficientNet via timm non disponible")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -65,7 +67,7 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 MODEL_PLATE = "best_model_detection_plaque.pt"
-MODEL_VEHICLE = "yolov8s.pt"
+MODEL_VEHICLE = "yolov8s.pt"  # Pré-entraîné COCO, détecte voitures/motos/bus/camions
 MODEL_BRAND = "best_model_efficientNet_finetune.pth"
 
 # Modèles custom (SimpleYOLO from scratch)
@@ -102,7 +104,6 @@ class ALPRPipeline:
         self.ocr_model = None
         self.brand_model = None
         self.brand_transform = None
-        self._brand_classes = None
         
         # Flags
         self.is_custom_model = False
@@ -165,6 +166,7 @@ class ALPRPipeline:
             model_path = self._find_model(MODEL_PLATE)
         
         if model_path is None:
+            # Fallback: chercher best.pt ou yolov8n.pt
             model_path = self._find_model("best.pt") or "yolov8n.pt"
             print(f"⚠️ {MODEL_PLATE} non trouvé, fallback: {model_path}")
         
@@ -172,6 +174,7 @@ class ALPRPipeline:
         model_name = os.path.basename(model_path)
         
         try:
+            # Vérifier si c'est un modèle custom (SimpleYOLO)
             if model_name in CUSTOM_MODELS and CUSTOM_YOLO_AVAILABLE:
                 print(f"🏠 Chargement modèle custom: {model_name}")
                 self.yolo_plate = load_custom_model(model_path, device=self.device)
@@ -185,103 +188,70 @@ class ALPRPipeline:
         except Exception as e:
             print(f"❌ Erreur chargement YOLO Plaque: {e}")
     
-    def _load_ocr(self):
-        """Charge le modèle OCR pour lecture de plaques."""
-        if not OCR_AVAILABLE:
-            print("⚠️ OCR non disponible")
-            return
-        
-        try:
-            self.ocr_model = LicensePlateRecognizer('global-plates-mobile-vit-v2-model')
-            print("✅ OCR: fast-plate-ocr (global-plates-mobile-vit-v2-model)")
-        except Exception as e:
-            print(f"⚠️ Erreur chargement OCR: {e}")
-            self.ocr_model = None
+def _load_brand_classifier(self):
+    """Charge le modèle EfficientNet pour classification marque."""
+    if not TORCH_AVAILABLE:
+        print("⚠️ EfficientNet non disponible (torch manquant)")
+        return
     
-    def _load_yolo_vehicle(self):
-        """Charge le modèle YOLO pour détection de véhicules."""
-        if not YOLO_AVAILABLE:
-            print("⚠️ YOLO non disponible")
-            return
-        
-        model_path = self._find_model(MODEL_VEHICLE)
-        
-        try:
-            if model_path:
-                self.yolo_vehicle = YOLO(model_path)
-                print(f"✅ YOLO Véhicule: {model_path}")
-            else:
-                # Téléchargement automatique
-                self.yolo_vehicle = YOLO("yolov8s.pt")
-                print("✅ YOLO Véhicule: yolov8s.pt (téléchargé)")
-        except Exception as e:
-            print(f"⚠️ Erreur chargement YOLO Véhicule: {e}")
-            self.yolo_vehicle = None
+    model_path = self._find_model(MODEL_BRAND)
     
-    def _load_brand_classifier(self):
-        """Charge le modèle EfficientNet pour classification marque."""
-        if not TORCH_AVAILABLE:
-            print("⚠️ EfficientNet non disponible (torch manquant)")
-            return
-        
-        model_path = self._find_model(MODEL_BRAND)
-        
-        if model_path is None:
-            print(f"⚠️ {MODEL_BRAND} non trouvé - Classification marque désactivée")
-            return
-        
-        try:
-            # Charger le checkpoint
-            checkpoint = torch.load(model_path, map_location=self.device)
+    if model_path is None:
+        print(f"⚠️ {MODEL_BRAND} non trouvé - Classification marque désactivée")
+        return
+    
+    try:
+        # Charger le checkpoint
+        checkpoint = torch.load(model_path, map_location=self.device)
 
-            # Extraire le state_dict (format checkpoint vs direct)
-            if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
-                state_dict = checkpoint['model_state_dict']
-                # Récupérer les classes depuis le checkpoint
-                if 'label_encoder_classes' in checkpoint:
-                    self._brand_classes = checkpoint['label_encoder_classes']
-                # Priorité au num_classes du checkpoint
-                num_classes = checkpoint.get('num_classes', 22)
-                print(f"📦 Checkpoint EfficientNet: epoch={checkpoint.get('epoch')}, val_acc={checkpoint.get('val_acc', 'N/A')}")
+        # Extraire le state_dict (format checkpoint vs direct)
+        if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+            state_dict = checkpoint['model_state_dict']
+            # Récupérer les classes depuis le checkpoint
+            if 'label_encoder_classes' in checkpoint:
+                self._brand_classes = checkpoint['label_encoder_classes']
+            # Priorité au num_classes du checkpoint
+            num_classes = checkpoint.get('num_classes', 22)
+            print(f"📦 Checkpoint EfficientNet: epoch={checkpoint.get('epoch')}, val_acc={checkpoint.get('val_acc', 'N/A')}")
+        else:
+            state_dict = checkpoint
+            # Détecter depuis classifier.1.weight uniquement
+            if 'classifier.1.weight' in state_dict:
+                num_classes = state_dict['classifier.1.weight'].shape[0]
             else:
-                state_dict = checkpoint
-                # Détecter depuis classifier.1.weight uniquement
-                if 'classifier.1.weight' in state_dict:
-                    num_classes = state_dict['classifier.1.weight'].shape[0]
-                else:
-                    num_classes = 22
+                num_classes = 22
 
-            # Créer le modèle EfficientNet B4 avec TORCHVISION
-            from torchvision.models import efficientnet_b0
-            
-            self.brand_model = efficientnet_b0(weights=None)
-            self.brand_model.classifier[1] = torch.nn.Linear(
-                self.brand_model.classifier[1].in_features, 
-                num_classes
+        # Créer le modèle EfficientNet B4 avec TORCHVISION (le checkpoint a été entraîné avec torchvision)
+        from torchvision.models import efficientnet_b4
+        
+        self.brand_model = efficientnet_b4(weights=None)
+        self.brand_model.classifier[1] = torch.nn.Linear(
+            self.brand_model.classifier[1].in_features, 
+            num_classes
+        )
+
+        # Charger les poids
+        self.brand_model.load_state_dict(state_dict)
+        self.brand_model.to(self.device)
+        self.brand_model.eval()
+        
+        # Transforms pour EfficientNet B4 (input 380x380)
+        self.brand_transform = transforms.Compose([
+            transforms.Resize((380, 380)),
+            transforms.ToTensor(),
+            transforms.Normalize(
+                mean=[0.485, 0.456, 0.406],
+                std=[0.229, 0.224, 0.225]
             )
-
-            # Charger les poids
-            self.brand_model.load_state_dict(state_dict)
-            self.brand_model.to(self.device)
-            self.brand_model.eval()
-            
-            # Transforms pour EfficientNet B4 (input 380x380)
-            self.brand_transform = transforms.Compose([
-                transforms.Resize((224, 224)),
-                transforms.ToTensor(),
-                transforms.Normalize(
-                    mean=[0.485, 0.456, 0.406],
-                    std=[0.229, 0.224, 0.225]
-                )
-            ])
-            
-            print(f"✅ EfficientNet: {model_path} ({num_classes} classes)")
-            
-        except Exception as e:
-            print(f"⚠️ Erreur chargement EfficientNet: {e}")
-            import traceback
-            traceback.print_exc()
-            self.brand_model = None
+        ])
+        
+        print(f"✅ EfficientNet: {model_path} ({num_classes} classes)")
+        
+    except Exception as e:
+        print(f"⚠️ Erreur chargement EfficientNet: {e}")
+        import traceback
+        traceback.print_exc()
+        self.brand_model = None
     
     def reload_model(self, model_name: str) -> Tuple[bool, str]:
         """
@@ -294,6 +264,7 @@ class ALPRPipeline:
             (success, message)
         """
         try:
+            # Construire le chemin
             if model_name.startswith('models/'):
                 model_path = model_name
             else:
@@ -311,11 +282,13 @@ class ALPRPipeline:
             else:
                 new_model = YOLO(model_path)
             
+            # Remplacer l'ancien modèle
             old_model = self.yolo_plate
             self.yolo_plate = new_model
             self.model_path = model_path
             self.is_custom_model = is_custom
             
+            # Cleanup
             del old_model
             gc.collect()
             
@@ -339,7 +312,8 @@ class ALPRPipeline:
     # BRANCHE 1: PLAQUE
     # ═══════════════════════════════════════════════════════════════════════════
     
-    def detect_plates(self, image: np.ndarray, conf_threshold: float = 0.5) -> List[Dict]:
+    def detect_plates(self, image: np.ndarray, 
+                      conf_threshold: float = 0.5) -> List[Dict]:
         """
         Détecte les plaques dans une image.
         
@@ -357,8 +331,10 @@ class ALPRPipeline:
         
         try:
             if self.is_custom_model:
+                # Custom SimpleYOLO inference
                 plates_data = self._run_custom_inference(image, conf_threshold)
             else:
+                # Standard YOLOv8
                 results = self.yolo_plate(image, conf=conf_threshold, verbose=False)
                 
                 for r in results:
@@ -366,6 +342,7 @@ class ALPRPipeline:
                         x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
                         confidence = float(box.conf[0])
                         
+                        # Extraire ROI
                         roi = image[y1:y2, x1:x2]
                         
                         plates_data.append({
@@ -386,6 +363,7 @@ class ALPRPipeline:
         
         img_h, img_w = img.shape[:2]
         
+        # Préprocessing
         img_resized = cv2.resize(img, (416, 416))
         if len(img_resized.shape) == 2:
             img_resized = cv2.cvtColor(img_resized, cv2.COLOR_GRAY2RGB)
@@ -397,6 +375,7 @@ class ALPRPipeline:
         img_tensor = torch.from_numpy(img_resized).permute(2, 0, 1).float() / 255.0
         img_tensor = img_tensor.unsqueeze(0).to(self.device)
         
+        # Forward
         with torch.no_grad():
             output = self.yolo_plate(img_tensor)
         
@@ -457,7 +436,7 @@ class ALPRPipeline:
             if predictions and len(predictions) > 0:
                 text = predictions[0].plate if hasattr(predictions[0], 'plate') else str(predictions[0])
                 text = text.upper().replace(' ', '').replace('-', '')
-                return text, 0.95
+                return text, 0.95  # Confiance fixe comme dans l'original
             
         except Exception as e:
             print(f"⚠️ OCR error: {e}")
@@ -468,7 +447,8 @@ class ALPRPipeline:
     # BRANCHE 2: VÉHICULE + MARQUE
     # ═══════════════════════════════════════════════════════════════════════════
     
-    def detect_vehicle(self, image: np.ndarray, conf_threshold: float = 0.5) -> Optional[Dict]:
+    def detect_vehicle(self, image: np.ndarray, 
+                       conf_threshold: float = 0.5) -> Optional[Dict]:
         """
         Détecte le véhicule principal dans une image.
         
@@ -483,6 +463,7 @@ class ALPRPipeline:
             return None
         
         try:
+            # Classes COCO pour véhicules
             vehicle_classes = {2: "car", 3: "motorcycle", 5: "bus", 7: "truck"}
             
             results = self.yolo_vehicle(image, conf=conf_threshold, verbose=False)
@@ -530,6 +511,7 @@ class ALPRPipeline:
             return None
         
         try:
+            # Convertir BGR → RGB → PIL
             if len(vehicle_roi.shape) == 3 and vehicle_roi.shape[2] == 3:
                 vehicle_rgb = cv2.cvtColor(vehicle_roi, cv2.COLOR_BGR2RGB)
             else:
@@ -537,19 +519,18 @@ class ALPRPipeline:
             
             pil_image = Image.fromarray(vehicle_rgb)
             
+            # Transform
             input_tensor = self.brand_transform(pil_image).unsqueeze(0).to(self.device)
             
+            # Inference
             with torch.no_grad():
                 outputs = self.brand_model(input_tensor)
                 probs = F.softmax(outputs, dim=1)[0]
             
+            # Top 3
             top3_probs, top3_indices = torch.topk(probs, min(3, len(probs)))
             
-            # Utiliser les classes du checkpoint si disponibles
-            if self._brand_classes is not None:
-                brand_classes = self._brand_classes
-            else:
-                brand_classes = self.model_config.brand_classes
+            brand_classes = self.model_config.brand_classes
             
             top3 = [
                 (brand_classes[idx] if idx < len(brand_classes) else f"class_{idx}", 
@@ -578,7 +559,7 @@ class ALPRPipeline:
     # ═══════════════════════════════════════════════════════════════════════════
     
     def process_image(self, image_path: Union[str, np.ndarray],
-                      conf_threshold: float = 0.25,
+                      conf_threshold: float = 0.5,
                       run_branch2: bool = True,
                       declared_brand: str = None) -> Dict:
         """
@@ -603,17 +584,20 @@ class ALPRPipeline:
         
         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         
+        # Résultat (compatible format original)
         results = {
             'step1_raw': img_rgb.copy(),
             'step2_detection': None,
             'step3_roi': [],
             'step4_ocr': [],
             'step5_final': None,
+            # Branche 2
             'vehicle_detection': None,
             'vehicle_crop': None,
             'brand_result': None,
             'mismatch': False,
             'declared_brand': declared_brand,
+            # Métadonnées
             'metadata': {
                 'timestamp': datetime.now().isoformat(),
                 'image_size': img.shape[:2],
@@ -622,7 +606,11 @@ class ALPRPipeline:
             }
         }
         
+        # ─────────────────────────────────────────────────────────────────────
         # BRANCHE 1: Plaque + OCR
+        # ─────────────────────────────────────────────────────────────────────
+        
+        # Step 2: Détection plaques
         plates_data = self.detect_plates(img, conf_threshold)
         
         img_detected = img_rgb.copy()
@@ -635,6 +623,7 @@ class ALPRPipeline:
             {'bbox': p['bbox'], 'confidence': p['confidence']} for p in plates_data
         ]
         
+        # Step 3 & 4: ROI + OCR
         final_img = img_rgb.copy()
         
         for plate in plates_data:
@@ -643,6 +632,7 @@ class ALPRPipeline:
             
             results['step3_roi'].append(roi)
             
+            # OCR
             text, ocr_conf = self.read_plate(roi)
             
             results['step4_ocr'].append({
@@ -652,6 +642,7 @@ class ALPRPipeline:
                 'bbox': plate['bbox']
             })
             
+            # Annoter image finale
             cv2.rectangle(final_img, (x1, y1), (x2, y2), (0, 255, 0), 3)
             
             label = text if text else "???"
@@ -662,9 +653,12 @@ class ALPRPipeline:
         
         results['step5_final'] = final_img
         
+        # ─────────────────────────────────────────────────────────────────────
         # BRANCHE 2: Véhicule + Marque
+        # ─────────────────────────────────────────────────────────────────────
+        
         if run_branch2 and self.yolo_vehicle is not None:
-            vehicle = self.detect_vehicle(img, conf_threshold=0.25)
+            vehicle = self.detect_vehicle(img)
             
             if vehicle:
                 results['vehicle_detection'] = {
@@ -674,17 +668,20 @@ class ALPRPipeline:
                 }
                 results['vehicle_crop'] = vehicle['roi']
                 
+                # Classification marque
                 if self.brand_model is not None and vehicle['roi'].size > 0:
                     brand_result = self.classify_brand(vehicle['roi'])
                     
                     if brand_result:
                         results['brand_result'] = brand_result
                         
+                        # Mismatch detection
                         if declared_brand:
                             predicted = brand_result['brand'].lower()
                             declared = declared_brand.lower()
                             results['mismatch'] = predicted != declared
                         
+                        # Annoter image finale avec marque
                         x1, y1, x2, y2 = vehicle['bbox']
                         brand_label = f"{brand_result['brand']} ({brand_result['confidence']:.0%})"
                         color = (255, 0, 0) if results['mismatch'] else (255, 165, 0)
@@ -783,6 +780,7 @@ if __name__ == "__main__":
     print(f"OCR: {'✅' if pipeline.ocr_model else '❌'}")
     print(f"EfficientNet: {'✅' if pipeline.brand_model else '❌'}")
     
+    # Test avec image grise
     test_img = np.zeros((480, 640, 3), dtype=np.uint8)
     test_img[:] = (128, 128, 128)
     

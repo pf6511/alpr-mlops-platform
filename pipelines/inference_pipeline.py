@@ -81,7 +81,7 @@ class InferencePipeline:
             
             model_path = Path(self.settings.models.yolo_plate_path)
             if not model_path.exists():
-                model_path = Path("models/best.pt")
+                model_path = Path("models/best_model_detection_plaque.pt")
             if not model_path.exists():
                 model_path = "yolov8n.pt"
             
@@ -97,6 +97,8 @@ class InferencePipeline:
             from ultralytics import YOLO
             
             model_path = Path(self.settings.models.yolo_vehicle_path)
+            if not model_path.exists():
+                model_path = Path("models/best_model_detection_vehicle.pt")
             if not model_path.exists():
                 model_path = "yolov8s.pt"
             

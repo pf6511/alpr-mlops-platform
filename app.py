@@ -313,7 +313,7 @@ def get_mismatch_queue():
             'Prédite': record.marque_predite,
             'Déclarée': record.marque_declaree,
             'Confiance': f"{record.confiance:.1%}",
-            'Date': record.timestamp[:19] if record.timestamp else ''
+            'Date': str(record.timestamp)[:19] if record.timestamp else ''
         })
     
     return pd.DataFrame(data)
@@ -432,6 +432,22 @@ custom_css = """
 # GRADIO INTERFACE
 # ═══════════════════════════════════════════════════════════════════════════════
 
+def find_mismatch_image(plaque: str):
+    """Trouve l'image du mismatch basée sur la plaque."""
+    if not plaque:
+        return None
+    from pathlib import Path
+    safe_plaque = plaque.replace("-", "").replace(" ", "")
+    base_path = Path("./data/storage/mismatches")
+    if not base_path.exists():
+        return None
+    for date_dir in sorted(base_path.iterdir(), reverse=True):
+        if date_dir.is_dir():
+            for img_file in date_dir.glob(f"{safe_plaque}_*.jpg"):
+                return str(img_file)
+    return None
+
+
 with gr.Blocks(css=custom_css, title="ALPR Engine - LEAD Edition") as demo:
     
     # Header
@@ -514,14 +530,15 @@ with gr.Blocks(css=custom_css, title="ALPR Engine - LEAD Edition") as demo:
             gr.Markdown("*Valider/rejeter les erreurs de classification pour améliorer le modèle*")
             
             with gr.Row():
+                # Colonne gauche: Statistiques
                 with gr.Column(scale=2, elem_classes="glass-card"):
                     gr.Markdown("#### 📊 Statistiques")
                     stats_html = gr.HTML()
                     refresh_stats_btn = gr.Button("🔄 Rafraîchir", variant="secondary")
                 
-                with gr.Column(scale=3, elem_classes="glass-card"):
+                # Colonne centre: Actions
+                with gr.Column(scale=2, elem_classes="glass-card"):
                     gr.Markdown("#### ⚡ Actions rapides")
-                    
                     selected_plaque = gr.Textbox(label="Plaque sélectionnée")
                     correct_brand = gr.Textbox(label="Marque correcte (si autre)")
                     
@@ -531,6 +548,11 @@ with gr.Blocks(css=custom_css, title="ALPR Engine - LEAD Edition") as demo:
                         btn_reject = gr.Button("❌ Rejeter", variant="stop")
                     
                     validation_msg = gr.Textbox(label="Résultat", interactive=False)
+                
+                # Colonne droite: Image véhicule
+                with gr.Column(scale=1, elem_classes="glass-card"):
+                    gr.Markdown("#### 🚗 Véhicule détecté")
+                    mismatch_image = gr.Image(label="Image", height=250)
             
             with gr.Row():
                 with gr.Column(elem_classes="glass-card"):
@@ -541,9 +563,26 @@ with gr.Blocks(css=custom_css, title="ALPR Engine - LEAD Edition") as demo:
                     )
                     refresh_queue_btn = gr.Button("🔄 Rafraîchir la liste")
             
+
+            # Sélection dans la table → met à jour plaque + image
+            def select_plaque(evt: gr.SelectData, df):
+                if evt.index is not None and len(evt.index) > 0:
+                    row_idx = evt.index[0]
+                    if df is not None and row_idx < len(df):
+                        plaque = df.iloc[row_idx]['Plaque']
+                        image_path = find_mismatch_image(plaque)
+                        return plaque, image_path
+                return "", None
+            
             # Event handlers
             refresh_stats_btn.click(fn=get_dataset_stats, outputs=[stats_html])
             refresh_queue_btn.click(fn=get_mismatch_queue, outputs=[mismatch_table])
+            
+            mismatch_table.select(
+                fn=select_plaque,
+                inputs=[mismatch_table],
+                outputs=[selected_plaque, mismatch_image]
+            )
             
             btn_validate_pred.click(
                 fn=lambda p: validate_mismatch(p, "", "validate_predicted"),
@@ -551,8 +590,8 @@ with gr.Blocks(css=custom_css, title="ALPR Engine - LEAD Edition") as demo:
                 outputs=[validation_msg, mismatch_table]
             )
             btn_validate_decl.click(
-                fn=lambda p: validate_mismatch(p, "", "validate_declared"),
-                inputs=[selected_plaque],
+                fn=lambda p, b: validate_mismatch(p, b if b else "", "validate_declared"),
+                inputs=[selected_plaque, correct_brand],
                 outputs=[validation_msg, mismatch_table]
             )
             btn_reject.click(
@@ -601,28 +640,28 @@ with gr.Blocks(css=custom_css, title="ALPR Engine - LEAD Edition") as demo:
             
             def add_resident(plaque, marque, nom, prenom, tel, adresse, ville, cp, age, abo, acces):
                 try:
-                    db.add_resident(
-                        plaque=plaque,
-                        nom=nom,
-                        prenom=prenom,
-                        age=int(age),
-                        telephone=tel,
-                        adresse=adresse,
-                        ville=ville,
-                        code_postal=cp,
-                        abonnement="oui" if abo else "non",
-                        acces="oui" if acces else "non",
-                        marque_declaree=marque
-                    )
+                    db.add_resident({
+                        'plaque': plaque,
+                        'nom': nom,
+                        'prenom': prenom,
+                        'age': int(age),
+                        'telephone': tel,
+                        'adresse': adresse,
+                        'ville': ville,
+                        'code_postal': cp,
+                        'abonnement': "oui" if abo else "non",
+                        'acces': "oui" if acces else "non",
+                        'marque_declaree': marque
+                    })
                     return f"✅ Résident {prenom} {nom} ajouté!", get_residents_df()
                 except Exception as e:
                     return f"❌ Erreur: {e}", get_residents_df()
             
             def get_residents_df():
                 try:
-                    whitelist = db.get_whitelist()
+                    residents = db.get_all_residents() 
                     data = []
-                    for r in whitelist[:50]:
+                    for r in residents[:50]:
                         data.append({
                             'ID': r.get('id', ''),
                             'Plaque': r.get('plaque', ''),
@@ -633,6 +672,7 @@ with gr.Blocks(css=custom_css, title="ALPR Engine - LEAD Edition") as demo:
                         })
                     return pd.DataFrame(data)
                 except Exception as e:
+                    print(f"Error get_residents_df: {e}")
                     return pd.DataFrame()
             
             add_btn.click(
