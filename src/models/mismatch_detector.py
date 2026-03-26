@@ -161,24 +161,40 @@ class MismatchDetector:
         image_path = None
         log_id = None
         
-        # Sauvegarder l'image vers S3/local
-        if vehicle_crop is not None and self.storage and NUMPY_AVAILABLE:
-            try:
-                # Générer le chemin
-                date_str = datetime.now().strftime("%Y%m%d")
-                safe_plaque = plaque.replace("-", "").replace(" ", "")
-                key = f"mismatches/{date_str}/{safe_plaque}_{datetime.now().strftime('%H%M%S')}.jpg"
-                
-                # Upload
-                success, result = self.storage.upload_image(
-                    vehicle_crop, key, bucket_type='captures'
-                )
-                
-                if success:
-                    image_path = result
-                    
-            except Exception as e:
-                print(f"⚠️ Erreur sauvegarde image mismatch: {e}")
+# Sauvegarder l'image vers S3, sinon en local
+        if vehicle_crop is not None and NUMPY_AVAILABLE:
+            import cv2
+            date_str = datetime.now().strftime("%Y%m%d")
+            safe_plaque = plaque.replace("-", "").replace(" ", "")
+            filename = f"{safe_plaque}_{datetime.now().strftime('%H%M%S')}.jpg"
+            
+            saved = False
+            
+            # Tentative S3
+            if self.storage:
+                try:
+                    key = f"mismatches/{date_str}/{filename}"
+                    success, result = self.storage.upload_image(
+                        vehicle_crop, key, bucket_type='captures'
+                    )
+                    if success:
+                        image_path = result
+                        saved = True
+                        print(f"📸 Image mismatch → S3: {key}")
+                except Exception as e:
+                    print(f"⚠️ S3 non accessible: {e}")
+            
+            # Fallback local
+            if not saved:
+                try:
+                    save_dir = Path(f"./data/storage/mismatches/{date_str}")
+                    save_dir.mkdir(parents=True, exist_ok=True)
+                    filepath = save_dir / filename
+                    cv2.imwrite(str(filepath), vehicle_crop)
+                    image_path = str(filepath)
+                    print(f"📸 Image mismatch → Local: {image_path}")
+                except Exception as e:
+                    print(f"⚠️ Erreur sauvegarde image mismatch: {e}")
         
         # Logger dans la DB
         if self.db:
@@ -335,17 +351,19 @@ class MismatchDetector:
             return False, f"❌ Erreur rejet: {e}"
     
     def validate_as_predicted(self, record: MismatchRecord,
-                              validator: str = "operator") -> Tuple[bool, str]:
+                            validator: str = "operator") -> Tuple[bool, str]:
         """
         Valide avec la marque prédite (le modèle avait raison, DB incorrecte).
-        
-        Args:
-            record: Le MismatchRecord
-            validator: Identifiant du validateur
-            
-        Returns:
-            (success, message)
+        Met à jour la marque du résident dans la DB.
         """
+        # Mettre à jour la marque dans la DB du résident
+        if self.db:
+            try:
+                self.db.update_resident_brand(record.plaque, record.marque_predite)
+                print(f"📝 DB mise à jour: {record.plaque} → {record.marque_predite}")
+            except Exception as e:
+                print(f"⚠️ Erreur mise à jour DB: {e}")
+        
         return self.validate(record, record.marque_predite, validator)
     
     def validate_as_declared(self, record: MismatchRecord,

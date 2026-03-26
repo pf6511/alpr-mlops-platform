@@ -400,6 +400,33 @@ class DatabaseManager:
             return True, f"✅ Résident #{resident_id} mis à jour"
         except Exception as e:
             return False, f"❌ Erreur: {e}"
+        
+    def update_resident_brand(self, plaque: str, marque: str) -> Tuple[bool, str]:
+        """Met à jour la marque déclarée d'un résident par sa plaque."""
+        # Normaliser la plaque
+        plaque_normalized = plaque.replace(' ', '').replace('-', '').upper()
+        
+        ph = self._placeholder()
+        try:
+            with self.get_cursor(commit=True) as cursor:
+                if self.mode == "postgres":
+                    cursor.execute(f"""
+                        UPDATE residents 
+                        SET marque_declaree = {ph}, updated_at = NOW()
+                        WHERE REPLACE(REPLACE(UPPER(plaque), ' ', ''), '-', '') = {ph}
+                    """, (marque, plaque_normalized))
+                else:
+                    cursor.execute(f"""
+                        UPDATE residents 
+                        SET marque_declaree = {ph}, updated_at = datetime('now')
+                        WHERE REPLACE(REPLACE(UPPER(plaque), ' ', ''), '-', '') = {ph}
+                    """, (marque, plaque_normalized))
+                
+                if cursor.rowcount > 0:
+                    return True, f"✅ Marque mise à jour: {plaque} → {marque}"
+                return False, f"⚠️ Résident non trouvé: {plaque}"
+        except Exception as e:
+            return False, f"❌ Erreur: {e}"
     
     def delete_resident(self, resident_id: int) -> Tuple[bool, str]:
         """Supprime un résident."""
