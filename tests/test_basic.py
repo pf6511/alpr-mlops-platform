@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 # Ajouter le projet au path
-PROJECT_ROOT = Path(__file__).parent.parent
+PROJECT_ROOT = Path(__file__).parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 
@@ -29,6 +29,7 @@ class TestImports:
         from src.data.storage import get_storage
         # Just test imports work
         assert DatabaseManager is not None
+        assert get_storage is not None
     
     def test_import_models(self):
         """Test import models."""
@@ -36,6 +37,8 @@ class TestImports:
         from src.models.mismatch_detector import MismatchDetector
         from src.models.mlflow_client import MLflowManager
         assert ALPRPipeline is not None
+        assert MismatchDetector is not None
+        assert MLflowManager is not None
     
     def test_import_utils(self):
         """Test import utils."""
@@ -86,9 +89,11 @@ class TestDatabase:
         """Test initialisation DB."""
         from src.data.database import DatabaseManager
         import tempfile
+        import os
         
+        # Create temporary database file
         with tempfile.TemporaryDirectory() as tmpdir:
-            db_path = f"{tmpdir}/test.db"
+            db_path = os.path.join(tmpdir, "test.db")
             db = DatabaseManager(db_path=db_path)
             assert db is not None
     
@@ -96,9 +101,11 @@ class TestDatabase:
         """Test récupération whitelist."""
         from src.data.database import DatabaseManager
         import tempfile
+        import os
         
+        # Create temporary database file
         with tempfile.TemporaryDirectory() as tmpdir:
-            db_path = f"{tmpdir}/test.db"
+            db_path = os.path.join(tmpdir, "test.db")
             db = DatabaseManager(db_path=db_path)
             whitelist = db.get_whitelist()
             assert isinstance(whitelist, list)

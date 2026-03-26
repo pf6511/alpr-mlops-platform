@@ -1,0 +1,232 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# ALPR Engine - Helm Values
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Nombre de replicas
+replicaCount: 1
+
+# Image Docker
+image:
+  repository: alpr-engine
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SERVICE ACCOUNT
+# ═══════════════════════════════════════════════════════════════════════════════
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# POD CONFIGURATION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+podAnnotations: {}
+
+podSecurityContext:
+  fsGroup: 1000
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SERVICE
+# ═══════════════════════════════════════════════════════════════════════════════
+
+service:
+  type: ClusterIP
+  port: 7860
+  targetPort: 7860
+  annotations: {}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# INGRESS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+ingress:
+  enabled: false
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+  hosts:
+    - host: alpr.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# RESOURCES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+resources:
+  requests:
+    memory: "2Gi"
+    cpu: "500m"
+  limits:
+    memory: "8Gi"
+    cpu: "4000m"
+    nvidia.com/gpu: "1"  # Requiert GPU
+
+# Sans GPU (CPU only)
+# resources:
+#   requests:
+#     memory: "2Gi"
+#     cpu: "1000m"
+#   limits:
+#     memory: "4Gi"
+#     cpu: "2000m"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# AUTOSCALING
+# ═══════════════════════════════════════════════════════════════════════════════
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# NODE SELECTION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+nodeSelector: {}
+  # nvidia.com/gpu: "true"
+
+tolerations: []
+  # - key: "nvidia.com/gpu"
+  #   operator: "Exists"
+  #   effect: "NoSchedule"
+
+affinity: {}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# HEALTH CHECKS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+livenessProbe:
+  httpGet:
+    path: /
+    port: http
+  initialDelaySeconds: 60
+  periodSeconds: 30
+  timeoutSeconds: 10
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /
+    port: http
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ENVIRONMENT VARIABLES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+env:
+  ENV: "production"
+  GRADIO_SERVER_NAME: "0.0.0.0"
+  GRADIO_SERVER_PORT: "7860"
+
+# Variables secrètes (référence à un Secret)
+envFromSecret: ""
+# envFromSecret: "alpr-secrets"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CONFIGURATION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+config:
+  # Database
+  database:
+    mode: "postgres"  # sqlite ou postgres
+    host: ""  # Laisser vide pour utiliser le PostgreSQL intégré
+    port: 5432
+    name: "alpr"
+    user: "alpr"
+    # password via secret
+
+  # Storage S3
+  storage:
+    mode: "s3"  # local ou s3
+    endpoint: ""
+    region: "fr-par"
+    bucket_dataset: "alpr-dataset"
+    bucket_captures: "alpr-captures"
+    bucket_artifacts: "alpr-artifacts"
+    # credentials via secret
+
+  # MLflow
+  mlflow:
+    tracking_uri: "http://mlflow:5000"
+    experiment_name: "alpr-brand-classification"
+
+  # Ray Serve
+  ray:
+    enabled: false
+    address: "auto"
+    num_cpus: 4
+    num_gpus: 1
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PERSISTENCE
+# ═══════════════════════════════════════════════════════════════════════════════
+
+persistence:
+  enabled: true
+  storageClass: ""
+  accessMode: ReadWriteOnce
+  size: 10Gi
+  mountPath: /app/data
+
+# Models persistence
+models:
+  enabled: true
+  storageClass: ""
+  accessMode: ReadWriteOnce
+  size: 5Gi
+  mountPath: /app/models
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# DEPENDENCIES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# PostgreSQL (Bitnami)
+postgresql:
+  enabled: true
+  auth:
+    username: alpr
+    password: alpr-secret
+    database: alpr
+  primary:
+    persistence:
+      enabled: true
+      size: 5Gi
+
+# Redis (optionnel, pour cache)
+redis:
+  enabled: false
+  auth:
+    enabled: false
+
+# MLflow (optionnel)
+mlflow:
+  enabled: false
+  tracking:
+    persistence:
+      enabled: true
+      size: 5Gi

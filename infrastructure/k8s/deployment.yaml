@@ -1,0 +1,206 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "alpr-engine.fullname" . }}
+  labels:
+    {{- include "alpr-engine.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "alpr-engine.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "alpr-engine.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "alpr-engine.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.targetPort }}
+              protocol: TCP
+          
+          # Environment variables
+          env:
+            - name: ENV
+              value: {{ .Values.env.ENV | quote }}
+            - name: GRADIO_SERVER_NAME
+              value: {{ .Values.env.GRADIO_SERVER_NAME | quote }}
+            - name: GRADIO_SERVER_PORT
+              value: {{ .Values.env.GRADIO_SERVER_PORT | quote }}
+            
+            # Database
+            - name: DB_MODE
+              value: {{ .Values.config.database.mode | quote }}
+            {{- if .Values.postgresql.enabled }}
+            - name: DB_HOST
+              value: "{{ include "alpr-engine.fullname" . }}-postgresql"
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_NAME
+              value: {{ .Values.postgresql.auth.database | quote }}
+            - name: DB_USER
+              value: {{ .Values.postgresql.auth.username | quote }}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "alpr-engine.fullname" . }}-postgresql
+                  key: password
+            {{- else if .Values.config.database.host }}
+            - name: DB_HOST
+              value: {{ .Values.config.database.host | quote }}
+            - name: DB_PORT
+              value: {{ .Values.config.database.port | quote }}
+            - name: DB_NAME
+              value: {{ .Values.config.database.name | quote }}
+            - name: DB_USER
+              value: {{ .Values.config.database.user | quote }}
+            {{- end }}
+            
+            # Storage
+            - name: STORAGE_MODE
+              value: {{ .Values.config.storage.mode | quote }}
+            {{- if eq .Values.config.storage.mode "s3" }}
+            - name: S3_ENDPOINT
+              value: {{ .Values.config.storage.endpoint | quote }}
+            - name: S3_REGION
+              value: {{ .Values.config.storage.region | quote }}
+            - name: S3_BUCKET_DATASET
+              value: {{ .Values.config.storage.bucket_dataset | quote }}
+            - name: S3_BUCKET_CAPTURES
+              value: {{ .Values.config.storage.bucket_captures | quote }}
+            - name: S3_BUCKET_ARTIFACTS
+              value: {{ .Values.config.storage.bucket_artifacts | quote }}
+            {{- end }}
+            
+            # MLflow
+            - name: MLFLOW_TRACKING_URI
+              value: {{ .Values.config.mlflow.tracking_uri | quote }}
+            - name: MLFLOW_EXPERIMENT_NAME
+              value: {{ .Values.config.mlflow.experiment_name | quote }}
+            
+            # Ray
+            {{- if .Values.config.ray.enabled }}
+            - name: RAY_MODE
+              value: "serve"
+            - name: RAY_ADDRESS
+              value: {{ .Values.config.ray.address | quote }}
+            - name: RAY_NUM_CPUS
+              value: {{ .Values.config.ray.num_cpus | quote }}
+            - name: RAY_NUM_GPUS
+              value: {{ .Values.config.ray.num_gpus | quote }}
+            {{- end }}
+          
+          # Secret environment variables
+          {{- if .Values.envFromSecret }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.envFromSecret }}
+          {{- end }}
+          
+          # Health checks
+          livenessProbe:
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+          
+          # Resources
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          
+          # Volume mounts
+          volumeMounts:
+            {{- if .Values.persistence.enabled }}
+            - name: data
+              mountPath: {{ .Values.persistence.mountPath }}
+            {{- end }}
+            {{- if .Values.models.enabled }}
+            - name: models
+              mountPath: {{ .Values.models.mountPath }}
+            {{- end }}
+      
+      # Volumes
+      volumes:
+        {{- if .Values.persistence.enabled }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "alpr-engine.fullname" . }}-data
+        {{- end }}
+        {{- if .Values.models.enabled }}
+        - name: models
+          persistentVolumeClaim:
+            claimName: {{ include "alpr-engine.fullname" . }}-models
+        {{- end }}
+      
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+---
+# PVC for data
+{{- if .Values.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "alpr-engine.fullname" . }}-data
+  labels:
+    {{- include "alpr-engine.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.accessMode }}
+  {{- if .Values.persistence.storageClass }}
+  storageClassName: {{ .Values.persistence.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.size }}
+{{- end }}
+
+---
+# PVC for models
+{{- if .Values.models.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "alpr-engine.fullname" . }}-models
+  labels:
+    {{- include "alpr-engine.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.models.accessMode }}
+  {{- if .Values.models.storageClass }}
+  storageClassName: {{ .Values.models.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.models.size }}
+{{- end }}
