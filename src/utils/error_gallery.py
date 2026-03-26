@@ -10,6 +10,8 @@ from pathlib import Path
 class ErrorGallery:
     """Manage and display error examples."""
     
+    UNKNOWN_ISSUE_VALUE = "Unknown issue"
+
     def __init__(self, gallery_path="assets/error_examples"):
         """
         Initialize error gallery.
@@ -43,7 +45,7 @@ class ErrorGallery:
         for img_file in self.gallery_path.glob("*.jpg"):
             filename = img_file.name
             annotation = self.annotations.get(filename, {
-                "issue": "Unknown issue",
+                "issue": self.UNKNOWN_ISSUE_VALUE,
                 "detection_confidence": 0.0,
                 "ocr_confidence": 0.0,
                 "expected": "N/A",
