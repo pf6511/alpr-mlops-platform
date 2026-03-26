@@ -1,0 +1,109 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: airflow-postgres
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - airflow_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow -d airflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  airflow-init:
+    image: apache/airflow:2.10.0
+    container_name: airflow-init
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+      AIRFLOW__WEBSERVER__SECRET_KEY: "change_me_secret_key"
+      PYTHONPATH: /opt/airflow/project
+      PYTHON_BIN: python
+      SCRIPTS_DIR: /opt/airflow/scripts
+      MLFLOW_TRACKING_URI: http://host.docker.internal:8080
+      MLFLOW_EXPERIMENT_NAME: ALPR_Plate_Pipeline
+      MLFLOW_EXPERIMENT_NAME_BRAND: Vehicle_Brand_Training
+      S3_DATA_BUCKET: s3://alpr-data
+    volumes:
+      - ../../airflow/dags:/opt/airflow/dags
+      - ../../airflow/scripts:/opt/airflow/scripts
+      - ../../:/opt/airflow/project
+    command: >
+      bash -c "
+      airflow db migrate &&
+      airflow users create
+      --username admin
+      --firstname Admin
+      --lastname User
+      --role Admin
+      --email admin@example.com
+      --password admin
+      "
+    restart: "no"
+
+  airflow-webserver:
+    image: apache/airflow:2.10.0
+    container_name: airflow-webserver
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+      AIRFLOW__WEBSERVER__SECRET_KEY: "change_me_secret_key"
+      PYTHONPATH: /opt/airflow/project
+      PYTHON_BIN: python
+      SCRIPTS_DIR: /opt/airflow/scripts
+      MLFLOW_TRACKING_URI: http://host.docker.internal:8080
+      MLFLOW_EXPERIMENT_NAME: ALPR_Plate_Pipeline
+      MLFLOW_EXPERIMENT_NAME_BRAND: Vehicle_Brand_Training
+      S3_DATA_BUCKET: s3://alpr-data
+    volumes:
+      - ../../airflow/dags:/opt/airflow/dags
+      - ../../airflow/scripts:/opt/airflow/scripts
+      - ../../:/opt/airflow/project
+    ports:
+      - "8081:8080"
+    command: webserver
+
+  airflow-scheduler:
+    image: apache/airflow:2.10.0
+    container_name: airflow-scheduler
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+      AIRFLOW__WEBSERVER__SECRET_KEY: "change_me_secret_key"
+      PYTHONPATH: /opt/airflow/project
+      PYTHON_BIN: python
+      SCRIPTS_DIR: /opt/airflow/scripts
+      MLFLOW_TRACKING_URI: http://host.docker.internal:8080
+      MLFLOW_EXPERIMENT_NAME: ALPR_Plate_Pipeline
+      MLFLOW_EXPERIMENT_NAME_BRAND: Vehicle_Brand_Training
+      S3_DATA_BUCKET: s3://alpr-data
+    volumes:
+      - ../../airflow/dags:/opt/airflow/dags
+      - ../../airflow/scripts:/opt/airflow/scripts
+      - ../../:/opt/airflow/project
+    command: scheduler
+
+volumes:
+  airflow_postgres_data:
