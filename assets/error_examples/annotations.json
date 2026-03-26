@@ -1,0 +1,18 @@
+{
+  "error_1770823832.jpg": {
+    "issue": "No Plate Detected",
+    "expected": "Unknown",
+    "predicted": "None",
+    "detection_confidence": 0.0,
+    "ocr_confidence": 0.0,
+    "analysis": "Failed to detect plate. <div class=\"access-banner\" style=\"background-color..."
+  },
+  "error_1770823947.jpg": {
+    "issue": "No Plate Detected",
+    "expected": "Unknown",
+    "predicted": "None",
+    "detection_confidence": 0.0,
+    "ocr_confidence": 0.0,
+    "analysis": "Failed to detect plate. <div class=\"access-banner\" style=\"background-color..."
+  }
+}
