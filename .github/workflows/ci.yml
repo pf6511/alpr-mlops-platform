@@ -6,6 +6,7 @@ on:
       - main
       - dev
       - "feature/**"
+      - dev_pieric
   pull_request:
     branches:
       - main
