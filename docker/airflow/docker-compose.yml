@@ -17,7 +17,7 @@ services:
   airflow-init:
     build:
       context: ../..
-      dockerfile: infrastructure/airflow/Dockerfile
+      dockerfile: docker/airflow/Dockerfile
     container_name: airflow-init
     depends_on:
       postgres:
@@ -57,7 +57,7 @@ services:
   airflow-webserver:
     build:
       context: ../..
-      dockerfile: infrastructure/airflow/Dockerfile
+      dockerfile: docker/airflow/Dockerfile
     container_name: airflow-webserver
     depends_on:
       postgres:
@@ -90,7 +90,7 @@ services:
   airflow-scheduler:
     build:
       context: ../..
-      dockerfile: infrastructure/airflow/Dockerfile
+      dockerfile: docker/airflow/Dockerfile
     container_name: airflow-scheduler
     depends_on:
       postgres:
