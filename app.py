@@ -313,7 +313,7 @@ def get_mismatch_queue():
             'Prédite': record.marque_predite,
             'Déclarée': record.marque_declaree,
             'Confiance': f"{record.confiance:.1%}",
-            'Date': record.timestamp[:19] if record.timestamp else ''
+            'Date': record.timestamp.strftime('%Y-%m-%d %H:%M:%S') if record.timestamp else ''
         })
     
     return pd.DataFrame(data)
@@ -544,20 +544,28 @@ with gr.Blocks(css=custom_css, title="ALPR Engine - LEAD Edition") as demo:
             # Event handlers
             refresh_stats_btn.click(fn=get_dataset_stats, outputs=[stats_html])
             refresh_queue_btn.click(fn=get_mismatch_queue, outputs=[mismatch_table])
+
+            def on_row_select(evt: gr.SelectData, df):
+                if df is None or df.empty:
+                    return ""
+                row_idx = evt.index[0]
+                return str(df.iloc[row_idx]['Plaque'])
+
+            mismatch_table.select(fn=on_row_select, inputs=[mismatch_table], outputs=[selected_plaque])
             
             btn_validate_pred.click(
-                fn=lambda p: validate_mismatch(p, "", "validate_predicted"),
-                inputs=[selected_plaque],
+                fn=lambda p, b: validate_mismatch(p, b, "validate_predicted"),
+                inputs=[selected_plaque, correct_brand],
                 outputs=[validation_msg, mismatch_table]
             )
             btn_validate_decl.click(
-                fn=lambda p: validate_mismatch(p, "", "validate_declared"),
-                inputs=[selected_plaque],
+                fn=lambda p, b: validate_mismatch(p, b, "validate_declared"),
+                inputs=[selected_plaque, correct_brand],
                 outputs=[validation_msg, mismatch_table]
             )
             btn_reject.click(
-                fn=lambda p: validate_mismatch(p, "", "reject"),
-                inputs=[selected_plaque],
+                fn=lambda p, b: validate_mismatch(p, b, "reject"),
+                inputs=[selected_plaque, correct_brand],
                 outputs=[validation_msg, mismatch_table]
             )
             
