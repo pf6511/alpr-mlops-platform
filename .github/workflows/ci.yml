@@ -34,7 +34,7 @@ jobs:
 
       - name: Installer outils CI
         run: |
-          pip install pytest ruff
+         pip install pytest "ruff==0.16.9"
 
       - name: Vérifier la syntaxe Python
         run: python -m compileall .
