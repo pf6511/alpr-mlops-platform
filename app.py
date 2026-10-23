@@ -21,6 +21,10 @@ from datetime import datetime
 PROJECT_ROOT = Path(__file__).parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+# Logs du cœur d'inférence (chargement des modèles) visibles dans la console
+import logging
+logging.basicConfig(level=logging.INFO, format="%(message)s")
+
 # Configuration
 from configs.settings import get_settings
 

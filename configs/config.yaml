@@ -80,6 +80,9 @@ models:
     yolo_plate: models/best_model_detection_plaque.pt
     yolo_vehicle: models/yolov8s.pt
     efficientnet: models/best_model_efficientNet_finetune.pth
+
+  # Modèle OCR fast-plate-ocr (surchargeable par MODEL_OCR_NAME)
+  ocr_model: global-plates-mobile-vit-v2-model
   
   # Classes de marques (22 marques EU)
   brand_classes:
@@ -111,6 +114,8 @@ models:
     # Seuil YOLO plaque. 0.5 manquait des plaques en vue arrière ;
     # surchargeable par la variable d'environnement MODEL_YOLO_CONF
     detection: 0.25
+    # Seuil YOLO véhicule (branche 2)
+    vehicle: 0.25
     ocr: 0.6
     brand: 0.7
 

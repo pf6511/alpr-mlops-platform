@@ -15,6 +15,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from configs.settings import get_settings
+from src.inference.brands import is_brand_mismatch, normalize_brand
 
 # Imports optionnels
 try:
@@ -98,18 +99,8 @@ class MismatchDetector:
             'exported': 0
         }
     def _normalize_brand(self, brand: str) -> str:
-        """Normalize brand name to lowercase and handle variants."""
-        brand_lower = brand.lower().strip()
-        
-        # Handle common variants
-        variants = {
-            'vw': 'volkswagen',
-            'mercedes-benz': 'mercedes',
-            'bmw': 'bmw',
-            # Add other variants as needed
-        }
-        
-        return variants.get(brand_lower, brand_lower)
+        """Nom de marque normalisé (règle unique du cœur d'inférence)."""
+        return normalize_brand(brand)
         print("✅ MismatchDetector initialisé")
     
     # ═══════════════════════════════════════════════════════════════════════════
@@ -130,27 +121,7 @@ class MismatchDetector:
         Returns:
             True si mismatch détecté
         """
-        if not marque_predite or not marque_declaree:
-            return False
-        
-        # Normaliser les noms (lowercase, strip)
-        pred_norm = marque_predite.lower().strip()
-        decl_norm = marque_declaree.lower().strip()
-        
-        # Gérer les variantes courantes
-        variants = {
-            'vw': 'volkswagen',
-            'mercedes-benz': 'mercedes',
-            'mercedes benz': 'mercedes',
-            'bmw': 'bmw',
-            'citroën': 'citroen',
-            'peugeot': 'peugeot',
-        }
-        
-        pred_norm = variants.get(pred_norm, pred_norm)
-        decl_norm = variants.get(decl_norm, decl_norm)
-        
-        return pred_norm != decl_norm
+        return is_brand_mismatch(marque_predite, marque_declaree)
     
     def detect_and_record(self, plaque: str, marque_predite: str,
                           marque_declaree: str, confiance: float,

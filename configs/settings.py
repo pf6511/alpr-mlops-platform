@@ -88,7 +88,9 @@ class ModelSettings:
         "peugeot", "renault", "seat", "skoda", "suzuki", "toyota",
         "volkswagen", "volvo", "other"
     ])
+    ocr_model: str = "global-plates-mobile-vit-v2-model"
     detection_threshold: float = 0.25
+    vehicle_threshold: float = 0.25
     ocr_threshold: float = 0.6
     brand_threshold: float = 0.7
 
@@ -229,7 +231,9 @@ def _create_settings_from_config(config: Dict) -> Settings:
         yolo_vehicle_path=paths.get('yolo_vehicle', 'models/yolov8s.pt'),
         efficientnet_path=paths.get('efficientnet', 'models/best_model_efficientNet_finetune.pth'),
         brand_classes=models_config.get('brand_classes', ModelSettings().brand_classes),
+        ocr_model=os.environ.get('MODEL_OCR_NAME', models_config.get('ocr_model', ModelSettings().ocr_model)),
         detection_threshold=float(os.environ.get('MODEL_YOLO_CONF', thresholds.get('detection', 0.25))),
+        vehicle_threshold=float(thresholds.get('vehicle', 0.25)),
         ocr_threshold=float(thresholds.get('ocr', 0.6)),
         brand_threshold=float(thresholds.get('brand', 0.7)),
     )

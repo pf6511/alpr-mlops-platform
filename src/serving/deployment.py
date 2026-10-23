@@ -6,13 +6,12 @@ Scripts de déploiement, monitoring et tests.
 import os
 import sys
 import time
-import json
 import base64
 import argparse
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict
 
-PROJECT_ROOT = Path(__file__).parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 try:
@@ -41,7 +40,7 @@ def deploy(host: str = "0.0.0.0", port: int = 8000, detach: bool = False):
     
     from src.serving.ray_serve import start_server
     
-    print(f"🚀 Déploiement ALPR Engine")
+    print("🚀 Déploiement ALPR Engine")
     print(f"   http://{host}:{port}")
     
     try:
@@ -65,7 +64,7 @@ def undeploy():
         return
     
     try:
-        from serve.ray_serve import stop_server
+        from src.serving.ray_serve import stop_server
         stop_server()
         print("✅ Application arrêtée")
     except Exception as e:
@@ -82,17 +81,19 @@ def status():
         if not ray.is_initialized():
             ray.init(ignore_reinit_error=True)
         
-        deployments = serve.list_deployments()
+        serve_status = serve.status()
         
         print("📊 Statut Ray Serve:")
         print("-" * 40)
         
-        if not deployments:
-            print("   Aucun déploiement actif")
+        if not serve_status.applications:
+            print("   Aucune application active")
             return
         
-        for name, dep in deployments.items():
-            print(f"   {name}: {dep.num_replicas} replica(s)")
+        for app_name, app in serve_status.applications.items():
+            print(f"   {app_name}: {app.status}")
+            for dep_name, dep in app.deployments.items():
+                print(f"      {dep_name}: {dep.status} {dict(dep.replica_states)}")
         
     except Exception as e:
         print(f"⚠️ Erreur: {e}")
@@ -104,18 +105,9 @@ def scale(deployment_name: str, num_replicas: int):
         print("❌ Ray non installé")
         return
     
-    try:
-        if not ray.is_initialized():
-            ray.init(ignore_reinit_error=True)
-        
-        serve.get_deployment(deployment_name).options(
-            num_replicas=num_replicas
-        ).deploy()
-        
-        print(f"✅ {deployment_name} → {num_replicas} replicas")
-        
-    except Exception as e:
-        print(f"⚠️ Erreur: {e}")
+    # L'API Ray Serve actuelle ne modifie plus un déploiement en place :
+    # le nombre de répliques se fixe au démarrage (variable RAY_REPLICAS).
+    print(f"ℹ️ Pour {deployment_name} : relancer avec RAY_REPLICAS={num_replicas}")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -193,7 +185,7 @@ def benchmark(image_path: str, num_requests: int = 10,
         if "error" not in result:
             times.append(elapsed)
             plates = len(result.get("plates", []))
-            brand = result.get("brand", {}).get("name", "N/A")
+            brand = (result.get("brand") or {}).get("brand", "N/A")
             print(f"   {i+1}: {elapsed:.3f}s - {plates} plaque(s), {brand}")
         else:
             print(f"   {i+1}: ❌ {result['error']}")
