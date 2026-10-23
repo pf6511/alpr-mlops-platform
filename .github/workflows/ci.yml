@@ -7,10 +7,12 @@ on:
       - dev
       - micka2
       - "feature/**"
+      - "refactor/**"
   pull_request:
     branches:
       - main
       - dev
+      - "refactor/**"
 
 jobs:
   test:

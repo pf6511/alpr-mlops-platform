@@ -15,6 +15,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from configs.settings import get_settings
+from src.inference.brands import is_brand_mismatch, normalize_brand
 
 # Imports optionnels
 try:
@@ -32,7 +33,7 @@ except ImportError:
 
 try:
     from src.data.storage import get_storage
-    STORAGE_AVAILABLE = False
+    STORAGE_AVAILABLE = True
 except ImportError:
     STORAGE_AVAILABLE = False
 
@@ -73,15 +74,20 @@ class MismatchDetector:
     4. Export: vers dataset labellisé pour retraining
     """
     
-    def __init__(self):
-        """Initialise le détecteur de mismatch."""
+    def __init__(self, db=None, storage=None):
+        """
+        Initialise le détecteur de mismatch.
+
+        `db` et `storage` peuvent être fournis par le conteneur de services,
+        pour partager une seule connexion ; à défaut, ils sont créés ici.
+        """
         self.settings = get_settings()
         
         # Database
-        self.db = DatabaseManager() if DB_AVAILABLE else None
+        self.db = db if db is not None else (DatabaseManager() if DB_AVAILABLE else None)
         
         # Storage
-        self.storage = get_storage() if STORAGE_AVAILABLE else None
+        self.storage = storage if storage is not None else (get_storage() if STORAGE_AVAILABLE else None)
         
         # File d'attente en mémoire (backup si DB non dispo)
         self._queue: List[MismatchRecord] = []
@@ -98,18 +104,8 @@ class MismatchDetector:
             'exported': 0
         }
     def _normalize_brand(self, brand: str) -> str:
-        """Normalize brand name to lowercase and handle variants."""
-        brand_lower = brand.lower().strip()
-        
-        # Handle common variants
-        variants = {
-            'vw': 'volkswagen',
-            'mercedes-benz': 'mercedes',
-            'bmw': 'bmw',
-            # Add other variants as needed
-        }
-        
-        return variants.get(brand_lower, brand_lower)
+        """Nom de marque normalisé (règle unique du cœur d'inférence)."""
+        return normalize_brand(brand)
         print("✅ MismatchDetector initialisé")
     
     # ═══════════════════════════════════════════════════════════════════════════
@@ -130,31 +126,12 @@ class MismatchDetector:
         Returns:
             True si mismatch détecté
         """
-        if not marque_predite or not marque_declaree:
-            return False
-        
-        # Normaliser les noms (lowercase, strip)
-        pred_norm = marque_predite.lower().strip()
-        decl_norm = marque_declaree.lower().strip()
-        
-        # Gérer les variantes courantes
-        variants = {
-            'vw': 'volkswagen',
-            'mercedes-benz': 'mercedes',
-            'mercedes benz': 'mercedes',
-            'bmw': 'bmw',
-            'citroën': 'citroen',
-            'peugeot': 'peugeot',
-        }
-        
-        pred_norm = variants.get(pred_norm, pred_norm)
-        decl_norm = variants.get(decl_norm, decl_norm)
-        
-        return pred_norm != decl_norm
+        return is_brand_mismatch(marque_predite, marque_declaree)
     
     def detect_and_record(self, plaque: str, marque_predite: str,
                           marque_declaree: str, confiance: float,
-                          vehicle_crop: 'np.ndarray' = None) -> Optional[MismatchRecord]:
+                          vehicle_crop: 'np.ndarray' = None,
+                          log_to_db: bool = True) -> Optional[MismatchRecord]:
         """
         Détecte un mismatch et l'enregistre.
         
@@ -163,7 +140,9 @@ class MismatchDetector:
             marque_predite: Marque prédite
             marque_declaree: Marque déclarée
             confiance: Score de confiance
-            vehicle_crop: Image du véhicule (numpy array)
+            vehicle_crop: Image du véhicule (numpy array RGB)
+            log_to_db: Enregistrer un log en base. False quand l'appelant
+                (ALPRService) a déjà enregistré le passage.
             
         Returns:
             MismatchRecord si mismatch détecté, None sinon
@@ -173,7 +152,7 @@ class MismatchDetector:
             return None
         
         timestamp = datetime.now().isoformat()
-        image_path = None
+        image_key = None   # clé de l'image dans le bucket « captures » (pas une URL)
         log_id = None
         
         # Sauvegarder l'image vers S3/local
@@ -190,13 +169,15 @@ class MismatchDetector:
                 )
                 
                 if success:
-                    image_path = result
+                    image_key = key
+                else:
+                    print(f"⚠️ Image mismatch non sauvegardée: {result}")
                     
             except Exception as e:
                 print(f"⚠️ Erreur sauvegarde image mismatch: {e}")
         
         # Logger dans la DB
-        if self.db:
+        if self.db and log_to_db:
             try:
                 self.db.add_log(
                     plaque=plaque,
@@ -216,7 +197,7 @@ class MismatchDetector:
             marque_declaree=marque_declaree,
             confiance=confiance,
             timestamp=timestamp,
-            image_path=image_path,
+            image_path=image_key,
             log_id=log_id,
             status="pending"
         )
@@ -262,6 +243,7 @@ class MismatchDetector:
                         marque_declaree=declared,
                         confiance=log.get('marque_confiance', 0.0) or 0.0,
                         timestamp=log['timestamp'],
+                        image_path=log.get('image_key'),
                         log_id=log['id'],
                         status="pending"
                     ))
@@ -301,33 +283,36 @@ class MismatchDetector:
         Returns:
             (success, message)
         """
+        label = normalize_brand(correct_brand)
         try:
             record.status = "validated"
-            if record.log_id is not None:
-                self._validated_ids.add(record.log_id)
+            self._mark_in_db(record, "validated", label)
             self._stats['pending'] -= 1
             self._stats['validated'] += 1
 
-            # Sauvegarder vers le dataset labellisé
-            if record.image_path and self.storage:
-                # Copier vers labeled/
-                success, result = self.storage.save_labeled_image(
-                    image=record.image_path,  # Chemin source
-                    label=correct_brand,
-                    plaque=record.plaque,
-                    confidence=record.confiance,
-                    metadata={
-                        'original_prediction': record.marque_predite,
-                        'declared': record.marque_declaree,
-                        'validated_by': validator,
-                        'validated_at': datetime.now().isoformat()
-                    }
-                )
-                
-                if success:
-                    return True, f"✅ Validé: {record.plaque} → {correct_brand}"
-            
-            return True, f"✅ Validé (sans image): {record.plaque} → {correct_brand}"
+            if not (record.image_path and self.storage):
+                return True, f"✅ Validé (sans image): {record.plaque} → {label}"
+
+            # Copier l'image de l'incohérence (bucket captures) vers le dataset labellisé
+            found, image = self.storage.download_image(record.image_path, bucket_type='captures')
+            if not found:
+                return True, f"⚠️ Validé: {record.plaque} → {label}, image introuvable ({image})"
+
+            success, result = self.storage.save_labeled_image(
+                image=image.convert('RGB'),
+                label=label,
+                plaque=record.plaque,
+                confidence=record.confiance,
+                metadata={
+                    'original_prediction': record.marque_predite,
+                    'declared': record.marque_declaree,
+                    'validated_by': validator,
+                    'validated_at': datetime.now().isoformat()
+                }
+            )
+            if success:
+                return True, f"✅ Validé: {record.plaque} → {label} (image ajoutée au jeu de données)"
+            return True, f"⚠️ Validé: {record.plaque} → {label}, image non enregistrée ({result})"
             
         except Exception as e:
             return False, f"❌ Erreur validation: {e}"
@@ -345,8 +330,7 @@ class MismatchDetector:
         """
         try:
             record.status = "rejected"
-            if record.log_id is not None:
-                self._validated_ids.add(record.log_id)
+            self._mark_in_db(record, "rejected")
             self._stats['pending'] -= 1
             self._stats['rejected'] += 1
 
@@ -355,6 +339,16 @@ class MismatchDetector:
         except Exception as e:
             return False, f"❌ Erreur rejet: {e}"
     
+    def _mark_in_db(self, record: MismatchRecord, status: str, label: str = None) -> None:
+        """Persiste la décision en base : l'incohérence quitte la file, même après redémarrage."""
+        if record.log_id is not None:
+            self._validated_ids.add(record.log_id)
+        if self.db is not None and record.log_id is not None:
+            try:
+                self.db.set_log_validation(record.log_id, status, label)
+            except Exception as e:
+                print(f"⚠️ Décision non enregistrée en base: {e}")
+
     def validate_as_predicted(self, record: MismatchRecord,
                               validator: str = "operator") -> Tuple[bool, str]:
         """

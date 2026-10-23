@@ -139,3 +139,6 @@ docker/volumes/
 # Git placeholders (garder ces fichiers)
 # ───────────────────────────────────────────────────────────────────────────────
 !**/.gitkeep
+
+# Cache local des modèles téléchargés depuis le registre MLflow
+data/registry_cache/

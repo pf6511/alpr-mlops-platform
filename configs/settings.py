@@ -52,13 +52,27 @@ class S3Settings:
     region: str = "us-east-1"
     bucket_captures: str = "alpr-captures"
     bucket_dataset: str = "alpr-dataset"
+    # Bucket des artefacts (modèles) : celui de MLflow dans docker-compose
+    artifacts_bucket: str = "mlflow"
 
 
 @dataclass
 class MLflowSettings:
-    """Configuration MLflow."""
+    """
+    Configuration MLflow (suivi des expériences et registre de modèles).
+
+    Le jeton d'un serveur protégé se passe par la variable d'environnement
+    MLFLOW_TRACKING_TOKEN, lue directement par MLflow (jamais dans ce fichier).
+    """
     tracking_uri: str = "./mlruns"
     experiment_prefix: str = "alpr"
+    experiment: str = "alpr-brand-classifier"
+    brand_model_name: str = "vehicle_brand_model"
+    champion_alias: str = "champion"
+    challenger_alias: str = "challenger"
+    # Origine du classificateur de marque : "registry" (MLflow, repli local) ou "local"
+    brand_model_source: str = "local"
+    cache_dir: str = "data/registry_cache"
 
 
 @dataclass
@@ -88,9 +102,24 @@ class ModelSettings:
         "peugeot", "renault", "seat", "skoda", "suzuki", "toyota",
         "volkswagen", "volvo", "other"
     ])
+    ocr_model: str = "global-plates-mobile-vit-v2-model"
     detection_threshold: float = 0.25
+    vehicle_threshold: float = 0.25
     ocr_threshold: float = 0.6
     brand_threshold: float = 0.7
+
+
+@dataclass
+class RetentionSettings:
+    """
+    Durées de conservation des données personnelles (RGPD, art. 5.1.e).
+
+    Les images d'incohérences (véhicule et plaque visibles) ne servent qu'à la
+    validation par un opérateur : au-delà de `captures_days`, le stockage les
+    supprime lui-même (règle de cycle de vie S3, voir src/data/retention.py).
+    """
+    captures_days: int = 30
+    captures_prefix: str = "mismatches/"
 
 
 @dataclass
@@ -113,6 +142,7 @@ class Settings:
     airflow: AirflowSettings = field(default_factory=AirflowSettings)
     models: ModelSettings = field(default_factory=ModelSettings)
     gradio: GradioSettings = field(default_factory=GradioSettings)
+    retention: RetentionSettings = field(default_factory=RetentionSettings)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -196,6 +226,7 @@ def _create_settings_from_config(config: Dict) -> Settings:
         region=os.environ.get('S3_REGION', s3_details.get('region', 'us-east-1')),
         bucket_captures=os.environ.get('S3_BUCKET_CAPTURES', buckets.get('captures', 'alpr-captures')),
         bucket_dataset=os.environ.get('S3_BUCKET_DATASET', buckets.get('dataset', 'alpr-dataset')),
+        artifacts_bucket=os.environ.get('S3_BUCKET_ARTIFACTS', buckets.get('artifacts', 'mlflow')),
     )
     
     # MLflow
@@ -203,6 +234,12 @@ def _create_settings_from_config(config: Dict) -> Settings:
     mlflow = MLflowSettings(
         tracking_uri=os.environ.get('MLFLOW_TRACKING_URI', mlflow_config.get('tracking_uri', './mlruns')),
         experiment_prefix=mlflow_config.get('experiment_prefix', 'alpr'),
+        experiment=os.environ.get('MLFLOW_EXPERIMENT', mlflow_config.get('experiment', 'alpr-brand-classifier')),
+        brand_model_name=os.environ.get('MLFLOW_BRAND_MODEL', mlflow_config.get('brand_model_name', 'vehicle_brand_model')),
+        champion_alias=mlflow_config.get('champion_alias', 'champion'),
+        challenger_alias=mlflow_config.get('challenger_alias', 'challenger'),
+        brand_model_source=os.environ.get('MODEL_BRAND_SOURCE', mlflow_config.get('brand_model_source', 'local')),
+        cache_dir=mlflow_config.get('cache_dir', 'data/registry_cache'),
     )
     
     # Ray
@@ -229,7 +266,9 @@ def _create_settings_from_config(config: Dict) -> Settings:
         yolo_vehicle_path=paths.get('yolo_vehicle', 'models/yolov8s.pt'),
         efficientnet_path=paths.get('efficientnet', 'models/best_model_efficientNet_finetune.pth'),
         brand_classes=models_config.get('brand_classes', ModelSettings().brand_classes),
+        ocr_model=os.environ.get('MODEL_OCR_NAME', models_config.get('ocr_model', ModelSettings().ocr_model)),
         detection_threshold=float(os.environ.get('MODEL_YOLO_CONF', thresholds.get('detection', 0.25))),
+        vehicle_threshold=float(thresholds.get('vehicle', 0.25)),
         ocr_threshold=float(thresholds.get('ocr', 0.6)),
         brand_threshold=float(thresholds.get('brand', 0.7)),
     )
@@ -243,6 +282,13 @@ def _create_settings_from_config(config: Dict) -> Settings:
         debug=os.environ.get('GRADIO_DEBUG', str(gradio_config.get('debug', False))).lower() == 'true',
     )
     
+    # Conservation des données (RGPD)
+    retention_config = config.get('retention', {})
+    retention = RetentionSettings(
+        captures_days=int(os.environ.get('CAPTURES_RETENTION_DAYS', retention_config.get('captures_days', 30))),
+        captures_prefix=retention_config.get('captures_prefix', 'mismatches/'),
+    )
+
     return Settings(
         env=os.environ.get('ENV', config.get('env', 'development')),
         database=database,
@@ -252,6 +298,7 @@ def _create_settings_from_config(config: Dict) -> Settings:
         airflow=airflow,
         models=models,
         gradio=gradio,
+        retention=retention,
     )
 
 

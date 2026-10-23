@@ -76,7 +76,7 @@ class StorageManager:
         """Initialise le client S3."""
         self.s3_client = boto3.client(
             's3',
-            endpoint_url=self.s3_config.endpoint,
+            endpoint_url=self.s3_config.endpoint or None,   # vide = AWS S3 standard
             aws_access_key_id=self.s3_config.access_key,
             aws_secret_access_key=self.s3_config.secret_key,
             region_name=self.s3_config.region

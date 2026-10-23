@@ -160,7 +160,11 @@ class DatabaseManager:
                     normalized_plate VARCHAR(20) NOT NULL,
                     marque_predite VARCHAR(50) DEFAULT NULL,
                     marque_confiance REAL DEFAULT NULL,
-                    mismatch BOOLEAN DEFAULT FALSE
+                    mismatch BOOLEAN DEFAULT FALSE,
+                    image_key VARCHAR(255) DEFAULT NULL,
+                    validation_status VARCHAR(10) DEFAULT NULL,
+                    validated_label VARCHAR(50) DEFAULT NULL,
+                    validated_at TIMESTAMP DEFAULT NULL
                 )
             """
         else:
@@ -191,7 +195,11 @@ class DatabaseManager:
                     normalized_plate TEXT NOT NULL,
                     marque_predite TEXT DEFAULT NULL,
                     marque_confiance REAL DEFAULT NULL,
-                    mismatch INTEGER DEFAULT 0
+                    mismatch INTEGER DEFAULT 0,
+                    image_key TEXT DEFAULT NULL,
+                    validation_status TEXT DEFAULT NULL,
+                    validated_label TEXT DEFAULT NULL,
+                    validated_at TEXT DEFAULT NULL
                 )
             """
 
@@ -199,7 +207,30 @@ class DatabaseManager:
             cursor.execute(residents_sql)
             cursor.execute(logs_sql)
 
+        self._migrate_logs_columns()
         print("✅ Tables initialisées")
+
+    # Colonnes ajoutées à `logs` après sa création initiale : boucle de validation
+    # (image de l'incohérence, décision de l'opérateur). Ajoutées au démarrage si
+    # absentes, pour faire évoluer les bases existantes sans perte de données.
+    LOGS_VALIDATION_COLUMNS = {
+        "image_key": ("VARCHAR(255)", "TEXT"),
+        "validation_status": ("VARCHAR(10)", "TEXT"),
+        "validated_label": ("VARCHAR(50)", "TEXT"),
+        "validated_at": ("TIMESTAMP", "TEXT"),
+    }
+
+    def _migrate_logs_columns(self):
+        with self.get_cursor(commit=True) as cursor:
+            if self.mode == "postgres":
+                for column, (pg_type, _) in self.LOGS_VALIDATION_COLUMNS.items():
+                    cursor.execute(f"ALTER TABLE logs ADD COLUMN IF NOT EXISTS {column} {pg_type} DEFAULT NULL")
+            else:
+                cursor.execute("PRAGMA table_info(logs)")
+                existing = {row[1] for row in cursor.fetchall()}
+                for column, (_, sqlite_type) in self.LOGS_VALIDATION_COLUMNS.items():
+                    if column not in existing:
+                        cursor.execute(f"ALTER TABLE logs ADD COLUMN {column} {sqlite_type} DEFAULT NULL")
 
     # (le reste de ton code ne change pas)
     
@@ -431,15 +462,16 @@ class DatabaseManager:
     
     def add_log(self, plaque: str, authorized: bool, normalized: str,
                 marque_predite: str = None, marque_confiance: float = None,
-                mismatch: bool = False) -> bool:
-        """Ajoute une entrée de log."""
+                mismatch: bool = False, image_key: str = None) -> bool:
+        """Ajoute une entrée de log. `image_key` : clé de l'image du véhicule (incohérence)."""
         ph = self._placeholder()
         timestamp = datetime.now().isoformat()
         resultat = "autorisé" if authorized else "refusé"
         
         sql = f"""
-            INSERT INTO logs (plaque, timestamp, resultat, normalized_plate, marque_predite, marque_confiance, mismatch)
-            VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+            INSERT INTO logs (plaque, timestamp, resultat, normalized_plate, marque_predite,
+                              marque_confiance, mismatch, image_key)
+            VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
         """
         
         try:
@@ -447,7 +479,7 @@ class DatabaseManager:
                 mismatch_val = mismatch if self.mode == "postgres" else (1 if mismatch else 0)
                 cursor.execute(sql, (
                     plaque, timestamp, resultat, normalized,
-                    marque_predite, marque_confiance, mismatch_val
+                    marque_predite, marque_confiance, mismatch_val, image_key
                 ))
             return True
         except Exception as e:
@@ -464,19 +496,31 @@ class DatabaseManager:
             return [self._row_to_dict(row) for row in rows]
     
     def get_mismatch_logs(self, limit: int = 100) -> List[Dict]:
-        """Récupère les logs avec mismatch marque (pour labellisation)."""
-        ph = self._placeholder()
+        """Logs avec incohérence de marque EN ATTENTE de validation (pour labellisation)."""
         mismatch_val = "TRUE" if self.mode == "postgres" else "1"
         
         with self.get_cursor() as cursor:
             cursor.execute(f"""
                 SELECT * FROM logs 
-                WHERE mismatch = {mismatch_val}
+                WHERE mismatch = {mismatch_val} AND validation_status IS NULL
                 ORDER BY timestamp DESC 
-                LIMIT {limit}
+                LIMIT {int(limit)}
             """)
             rows = cursor.fetchall()
             return [self._row_to_dict(row) for row in rows]
+
+    def set_log_validation(self, log_id: int, status: str, label: str = None) -> bool:
+        """Enregistre la décision de l'opérateur sur une incohérence ('validated' ou 'rejected')."""
+        if status not in ("validated", "rejected"):
+            raise ValueError(f"Statut de validation inconnu : {status}")
+        ph = self._placeholder()
+        with self.get_cursor(commit=True) as cursor:
+            cursor.execute(
+                f"UPDATE logs SET validation_status = {ph}, validated_label = {ph}, validated_at = {ph} "
+                f"WHERE id = {ph}",
+                (status, label, datetime.now().isoformat(), log_id),
+            )
+            return cursor.rowcount == 1
     
     # ═══════════════════════════════════════════════════════════════════════════
     # STATISTICS
@@ -520,7 +564,9 @@ class DatabaseManager:
             
             # Mismatches en attente
             mismatch_val = "TRUE" if self.mode == "postgres" else "1"
-            cursor.execute(f"SELECT COUNT(*) FROM logs WHERE mismatch = {mismatch_val}")
+            cursor.execute(
+                f"SELECT COUNT(*) FROM logs WHERE mismatch = {mismatch_val} AND validation_status IS NULL"
+            )
             row = cursor.fetchone()
             stats['mismatches_pending'] = row['count'] if self.mode == "postgres" else row[0]
         
