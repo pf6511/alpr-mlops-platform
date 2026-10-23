@@ -44,6 +44,7 @@ class CaptureOutcome:
     declared_brand: Optional[str] = None
     access: Optional[AccessDecision] = None  # None si aucune plaque lisible
     mismatch: bool = False                   # marque prédite ≠ marque déclarée
+    mismatch_image_key: Optional[str] = None # image du véhicule conservée pour validation
     failure_recorded: bool = False           # ajouté à la galerie d'erreurs
 
 
@@ -89,12 +90,12 @@ class ALPRService:
         predicted = result.brand.brand if result.brand else None
         outcome.mismatch = is_brand_mismatch(predicted, outcome.declared_brand)
 
-        # 5. Journal : UNE entrée par passage
-        self._log_passage(outcome)
-
-        # 6. Incohérence : image du véhicule conservée pour la validation humaine
+        # 5. Incohérence : image du véhicule conservée pour la validation humaine
         if outcome.mismatch:
-            self._record_mismatch(outcome)
+            outcome.mismatch_image_key = self._record_mismatch(outcome)
+
+        # 6. Journal : UNE entrée par passage, reliée à l'image en cas d'incohérence
+        self._log_passage(outcome)
 
         return outcome
 
@@ -118,23 +119,26 @@ class ALPRService:
             marque_predite=brand.brand if brand else None,
             marque_confiance=brand.confidence if brand else None,
             mismatch=outcome.mismatch,
+            image_key=outcome.mismatch_image_key,
         )
 
-    def _record_mismatch(self, outcome: CaptureOutcome) -> None:
+    def _record_mismatch(self, outcome: CaptureOutcome) -> Optional[str]:
+        """Sauvegarde l'image du véhicule ; renvoie sa clé de stockage (ou None)."""
         if self.mismatch_detector is None:
-            return
+            return None
         vehicle = outcome.result.vehicle
         crop_rgb = None
         if vehicle is not None and vehicle.crop is not None:
             crop_rgb = cv2.cvtColor(vehicle.crop, cv2.COLOR_BGR2RGB)  # le stockage attend du RGB
-        self.mismatch_detector.detect_and_record(
+        record = self.mismatch_detector.detect_and_record(
             plaque=outcome.plate_text,
             marque_predite=outcome.result.brand.brand,
             marque_declaree=outcome.declared_brand,
             confiance=outcome.result.brand.confidence,
             vehicle_crop=crop_rgb,
-            log_to_db=False,  # le passage est déjà journalisé
+            log_to_db=False,  # le passage est journalisé par ce service
         )
+        return record.image_path if record is not None else None
 
     def _record_failure(self, image_bgr: np.ndarray, result: InferenceResult) -> bool:
         """Ajoute l'image à la galerie d'erreurs (fichier temporaire propre à l'appel)."""

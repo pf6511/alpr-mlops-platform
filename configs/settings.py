@@ -52,6 +52,8 @@ class S3Settings:
     region: str = "us-east-1"
     bucket_captures: str = "alpr-captures"
     bucket_dataset: str = "alpr-dataset"
+    # Bucket des artefacts (modèles) : celui de MLflow dans docker-compose
+    artifacts_bucket: str = "mlflow"
 
 
 @dataclass
@@ -198,6 +200,7 @@ def _create_settings_from_config(config: Dict) -> Settings:
         region=os.environ.get('S3_REGION', s3_details.get('region', 'us-east-1')),
         bucket_captures=os.environ.get('S3_BUCKET_CAPTURES', buckets.get('captures', 'alpr-captures')),
         bucket_dataset=os.environ.get('S3_BUCKET_DATASET', buckets.get('dataset', 'alpr-dataset')),
+        artifacts_bucket=os.environ.get('S3_BUCKET_ARTIFACTS', buckets.get('artifacts', 'mlflow')),
     )
     
     # MLflow
