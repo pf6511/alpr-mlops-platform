@@ -74,15 +74,20 @@ class MismatchDetector:
     4. Export: vers dataset labellisé pour retraining
     """
     
-    def __init__(self):
-        """Initialise le détecteur de mismatch."""
+    def __init__(self, db=None, storage=None):
+        """
+        Initialise le détecteur de mismatch.
+
+        `db` et `storage` peuvent être fournis par le conteneur de services,
+        pour partager une seule connexion ; à défaut, ils sont créés ici.
+        """
         self.settings = get_settings()
         
         # Database
-        self.db = DatabaseManager() if DB_AVAILABLE else None
+        self.db = db if db is not None else (DatabaseManager() if DB_AVAILABLE else None)
         
         # Storage
-        self.storage = get_storage() if STORAGE_AVAILABLE else None
+        self.storage = storage if storage is not None else (get_storage() if STORAGE_AVAILABLE else None)
         
         # File d'attente en mémoire (backup si DB non dispo)
         self._queue: List[MismatchRecord] = []
@@ -125,7 +130,8 @@ class MismatchDetector:
     
     def detect_and_record(self, plaque: str, marque_predite: str,
                           marque_declaree: str, confiance: float,
-                          vehicle_crop: 'np.ndarray' = None) -> Optional[MismatchRecord]:
+                          vehicle_crop: 'np.ndarray' = None,
+                          log_to_db: bool = True) -> Optional[MismatchRecord]:
         """
         Détecte un mismatch et l'enregistre.
         
@@ -134,7 +140,9 @@ class MismatchDetector:
             marque_predite: Marque prédite
             marque_declaree: Marque déclarée
             confiance: Score de confiance
-            vehicle_crop: Image du véhicule (numpy array)
+            vehicle_crop: Image du véhicule (numpy array RGB)
+            log_to_db: Enregistrer un log en base. False quand l'appelant
+                (ALPRService) a déjà enregistré le passage.
             
         Returns:
             MismatchRecord si mismatch détecté, None sinon
@@ -167,7 +175,7 @@ class MismatchDetector:
                 print(f"⚠️ Erreur sauvegarde image mismatch: {e}")
         
         # Logger dans la DB
-        if self.db:
+        if self.db and log_to_db:
             try:
                 self.db.add_log(
                     plaque=plaque,
