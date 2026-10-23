@@ -35,10 +35,10 @@ class TestImports:
         """Test import models."""
         from src.models.pipeline import ALPRPipeline
         from src.models.mismatch_detector import MismatchDetector
-        from src.models.mlflow_client import MLflowManager
+        from src.mlops.registry import BrandModelRegistry
         assert ALPRPipeline is not None
         assert MismatchDetector is not None
-        assert MLflowManager is not None
+        assert BrandModelRegistry is not None
     
     def test_import_utils(self):
         """Test import utils."""
@@ -47,9 +47,9 @@ class TestImports:
     
     def test_import_pipelines(self):
         """Test import pipelines."""
-        from pipelines.training_pipeline import TrainingPipeline
         from pipelines.inference_pipeline import InferencePipeline
-        assert TrainingPipeline is not None
+        from src.training.train import run_training
+        assert run_training is not None
         assert InferencePipeline is not None
 
 

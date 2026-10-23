@@ -22,7 +22,14 @@ import numpy as np
 from configs.settings import Settings, get_settings
 
 from .conditions import estimate_conditions
-from .loader import InferenceModels, load_models, load_plate_detector, resolve_model_path
+from .loader import (
+    BrandBundleRef,
+    InferenceModels,
+    load_brand_bundle,
+    load_models,
+    load_plate_detector,
+    resolve_model_path,
+)
 from .types import BrandResult, InferenceResult, PlateResult, VehicleResult
 
 logger = logging.getLogger(__name__)
@@ -60,10 +67,12 @@ class ALPREngine:
         settings: Optional[Settings] = None,
         load_branch2: bool = True,
         plate_model_path: Optional[str] = None,
+        brand_bundle: Optional[BrandBundleRef] = None,
     ):
         self.settings = settings or get_settings()
         self.models = models or load_models(
-            self.settings, load_branch2=load_branch2, plate_model_path=plate_model_path
+            self.settings, load_branch2=load_branch2, plate_model_path=plate_model_path,
+            brand_bundle=brand_bundle,
         )
 
     # ═══════════════════════════════════════════════════════════════════════════
@@ -184,6 +193,15 @@ class ALPREngine:
         self.models.plate_detector = detector
         self.models.sources["plate_detector"] = str(path)
         return True, f"✅ Modèle '{Path(model_name).name}' chargé !"
+
+    def replace_brand_classifier(self, bundle: BrandBundleRef):
+        """Remplace le classificateur de marque par un paquet du registre. Renvoie (succès, message)."""
+        classifier = load_brand_bundle(bundle.directory, self.models.device)
+        if classifier is None:
+            return False, f"❌ Paquet illisible : {bundle.label}"
+        self.models.brand_classifier = classifier
+        self.models.sources["brand_classifier"] = bundle.label
+        return True, f"✅ Classificateur de marque : {bundle.label}"
 
     def status(self) -> dict:
         """État des modèles : chargé ou non, et origine."""

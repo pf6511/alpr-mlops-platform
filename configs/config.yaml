@@ -52,6 +52,16 @@ storage:
 mlflow:
   tracking_uri: ${MLFLOW_TRACKING_URI:./mlruns}
   experiment_prefix: alpr
+  # Expérience et nom du modèle de marque dans le registre
+  experiment: alpr-brand-classifier
+  brand_model_name: vehicle_brand_model
+  # Alias : « champion » = servi en production, « challenger » = candidat
+  champion_alias: champion
+  challenger_alias: challenger
+  # Origine du classificateur servi : registry (MLflow, repli local) | local
+  # (surchargeable par MODEL_BRAND_SOURCE)
+  brand_model_source: local
+  cache_dir: data/registry_cache
 
 # ───────────────────────────────────────────────────────────────────────────────
 # RAY SERVE

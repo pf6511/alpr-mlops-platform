@@ -15,6 +15,10 @@ def build(services: Services) -> None:
         _, message = system.reload_plate_model(model_name)
         return message, fmt.system_info(system.info())
 
+    def on_reload_champion():
+        _, message = system.reload_brand_champion()
+        return message, fmt.system_info(system.info())
+
     with gr.Tab("⚙️ Settings"):
         with gr.Column(elem_classes="glass-card"):
             gr.Markdown("### 🔧 Configuration des modèles")
@@ -29,7 +33,13 @@ def build(services: Services) -> None:
             model_status = gr.Textbox(value=f"Modèle actuel: {current}", label="Statut")
 
         with gr.Column(elem_classes="glass-card"):
+            gr.Markdown("### 🏆 Modèle de marque (registre MLflow)")
+            champion_btn = gr.Button("🔄 Charger le champion du registre")
+            champion_status = gr.Textbox(label="Statut", interactive=False)
+
+        with gr.Column(elem_classes="glass-card"):
             gr.Markdown("### 📊 Informations système")
             info_html = gr.HTML(fmt.system_info(system.info()))
 
         reload_btn.click(fn=on_reload, inputs=[model_dropdown], outputs=[model_status, info_html])
+        champion_btn.click(fn=on_reload_champion, outputs=[champion_status, info_html])

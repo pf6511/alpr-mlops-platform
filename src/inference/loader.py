@@ -47,6 +47,14 @@ GENERIC_VEHICLE_MODEL = "yolov8s.pt"
 
 
 @dataclass
+class BrandBundleRef:
+    """Paquet de modèle de marque disponible localement, et son libellé d'origine."""
+
+    directory: Path
+    label: str          # ex. « registry:vehicle_brand_model@champion (v3) »
+
+
+@dataclass
 class InferenceModels:
     """Les modèles chargés, derrière leurs interfaces (ports)."""
 
@@ -146,47 +154,93 @@ def build_brand_network(num_classes: int):
     return network
 
 
+# Paquet de modèle de marque (format du registre) : un dossier contenant
+#   weights.pt      les poids seuls (state_dict), chargés avec weights_only=True
+#   classes.json    la liste ordonnée des classes
+#   manifest.json   le lignage : jeu de données, métriques, origine (facultatif ici)
+BUNDLE_WEIGHTS = "weights.pt"
+BUNDLE_CLASSES = "classes.json"
+BUNDLE_MANIFEST = "manifest.json"
+
+
+def read_local_checkpoint(path: Path, default_classes: Sequence[str], device: str = "cpu"):
+    """
+    Lit un checkpoint local historique → (state_dict, classes, infos).
+
+    Formats : dictionnaire {'model_state_dict', 'label_encoder_classes', 'num_classes',
+    'epoch', 'val_acc'} ou state_dict brut. Fichier local de confiance : il peut
+    contenir des objets Python (weights_only=False). Un modèle venant du registre
+    passe, lui, par `read_bundle` (weights_only=True).
+    """
+    import torch
+
+    checkpoint = torch.load(str(path), map_location=device, weights_only=False)
+    classes = list(default_classes)
+    info = {}
+    if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
+        state_dict = checkpoint["model_state_dict"]
+        if checkpoint.get("label_encoder_classes") is not None:
+            classes = [str(c) for c in checkpoint["label_encoder_classes"]]
+        info = {k: checkpoint.get(k) for k in ("epoch", "val_acc", "num_classes") if k in checkpoint}
+    else:
+        state_dict = checkpoint
+    return state_dict, classes, info
+
+
+def read_bundle(directory: Path, device: str = "cpu"):
+    """Lit un paquet du registre → (state_dict, classes, manifeste). Aucun code n'est exécuté."""
+    import json
+
+    import torch
+
+    directory = Path(directory)
+    classes = json.loads((directory / BUNDLE_CLASSES).read_text(encoding="utf-8"))
+    state_dict = torch.load(str(directory / BUNDLE_WEIGHTS), map_location=device, weights_only=True)
+    manifest_path = directory / BUNDLE_MANIFEST
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {}
+    return state_dict, [str(c) for c in classes], manifest
+
+
+def classifier_from_state(state_dict, classes: Sequence[str], device: str = "cpu") -> TorchBrandClassifier:
+    """Construit le classificateur à partir de poids et de classes (architecture unique du projet)."""
+    weight = state_dict.get("classifier.1.weight")
+    num_classes = int(weight.shape[0]) if weight is not None else len(classes)
+    if num_classes != len(classes):
+        raise ValueError(f"{num_classes} sorties pour {len(classes)} classes : paquet incohérent")
+    network = build_brand_network(num_classes)
+    network.load_state_dict(state_dict)
+    network.to(device).eval()
+    return TorchBrandClassifier(network, build_brand_transform(), classes, device=device)
+
+
 def load_brand_classifier(
     path: Optional[Path], default_classes: Sequence[str], device: str = "cpu"
 ) -> Optional[BrandClassifier]:
-    """
-    Charge le classificateur de marque depuis un checkpoint.
-
-    Formats acceptés : dictionnaire {'model_state_dict', 'label_encoder_classes',
-    'num_classes', ...} ou state_dict brut. Les classes du checkpoint, quand elles
-    existent, priment sur la configuration : l'ordre des classes doit être celui
-    de l'entraînement.
-    """
+    """Charge le classificateur de marque depuis un checkpoint local historique."""
     if path is None:
         return None
     try:
-        import torch
-
-        checkpoint = torch.load(str(path), map_location=device)
-        classes = list(default_classes)
-        if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
-            state_dict = checkpoint["model_state_dict"]
-            if checkpoint.get("label_encoder_classes") is not None:
-                classes = [str(c) for c in checkpoint["label_encoder_classes"]]
-            num_classes = int(checkpoint.get("num_classes", len(classes)))
-            logger.info(
-                "Checkpoint de marque : epoch=%s, val_acc=%s",
-                checkpoint.get("epoch"), checkpoint.get("val_acc", "N/A"),
-            )
-        else:
-            state_dict = checkpoint
-            weight = state_dict.get("classifier.1.weight")
-            num_classes = int(weight.shape[0]) if weight is not None else len(classes)
-
-        network = build_brand_network(num_classes)
-        network.load_state_dict(state_dict)
-        network.to(device).eval()
-        return TorchBrandClassifier(network, build_brand_transform(), classes, device=device)
+        state_dict, classes, info = read_local_checkpoint(path, default_classes, device)
+        if info:
+            logger.info("Checkpoint de marque : epoch=%s, val_acc=%s", info.get("epoch"), info.get("val_acc", "N/A"))
+        return classifier_from_state(state_dict, classes, device)
     except Exception as exc:  # noqa: BLE001
         logger.error(
             "Classificateur de marque non chargé (%s) — architecture attendue : %s : %s",
             path, BRAND_ARCHITECTURE, exc,
         )
+        return None
+
+
+def load_brand_bundle(directory: Optional[Path], device: str = "cpu") -> Optional[BrandClassifier]:
+    """Charge le classificateur depuis un paquet du registre (téléchargé localement)."""
+    if directory is None:
+        return None
+    try:
+        state_dict, classes, _ = read_bundle(directory, device)
+        return classifier_from_state(state_dict, classes, device)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Paquet de modèle de marque illisible (%s) : %s", directory, exc)
         return None
 
 
@@ -198,8 +252,14 @@ def load_models(
     settings: Optional[Settings] = None,
     load_branch2: bool = True,
     plate_model_path: Optional[str] = None,
+    brand_bundle: Optional["BrandBundleRef"] = None,
 ) -> InferenceModels:
-    """Charge tous les modèles selon la configuration."""
+    """
+    Charge tous les modèles selon la configuration.
+
+    `brand_bundle` : paquet du registre déjà téléchargé (fourni par la couche MLOps).
+    S'il est absent ou illisible, le classificateur vient du fichier local.
+    """
     settings = settings or get_settings()
     cfg = settings.models
     device = detect_device()
@@ -226,11 +286,17 @@ def load_models(
         models.vehicle_detector = load_vehicle_detector(vehicle_source)
         models.sources["vehicle_detector"] = vehicle_source
 
-        brand_path = resolve_model_path([cfg.efficientnet_path])
-        if brand_path is None:
-            logger.warning("%s introuvable : classification de marque désactivée.", cfg.efficientnet_path)
-        models.brand_classifier = load_brand_classifier(brand_path, cfg.brand_classes, device)
-        models.sources["brand_classifier"] = str(brand_path) if brand_path else "absent"
+        if brand_bundle is not None:
+            models.brand_classifier = load_brand_bundle(brand_bundle.directory, device)
+            models.sources["brand_classifier"] = brand_bundle.label
+        if models.brand_classifier is None:
+            if brand_bundle is not None:
+                logger.warning("Modèle du registre inutilisable : repli sur le fichier local.")
+            brand_path = resolve_model_path([cfg.efficientnet_path])
+            if brand_path is None:
+                logger.warning("%s introuvable : classification de marque désactivée.", cfg.efficientnet_path)
+            models.brand_classifier = load_brand_classifier(brand_path, cfg.brand_classes, device)
+            models.sources["brand_classifier"] = f"local:{brand_path}" if brand_path else "absent"
 
     for role, source in models.sources.items():
         loaded = getattr(models, role) is not None
