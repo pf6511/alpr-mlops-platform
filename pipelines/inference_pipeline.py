@@ -404,7 +404,8 @@ if __name__ == "__main__":
     parser.add_argument("image", help="Chemin de l'image")
     parser.add_argument("--no-brand", action="store_true", help="Désactiver classification marque")
     parser.add_argument("--declared-brand", help="Marque déclarée pour mismatch")
-    parser.add_argument("--conf", type=float, default=0.5, help="Seuil de confiance")
+    parser.add_argument("--conf", type=float, default=None,
+                        help="Seuil de confiance (défaut : configuration)")
     args = parser.parse_args()
     
     pipeline = InferencePipeline()

@@ -88,7 +88,7 @@ class ModelSettings:
         "peugeot", "renault", "seat", "skoda", "suzuki", "toyota",
         "volkswagen", "volvo", "other"
     ])
-    detection_threshold: float = 0.5
+    detection_threshold: float = 0.25
     ocr_threshold: float = 0.6
     brand_threshold: float = 0.7
 
@@ -229,7 +229,7 @@ def _create_settings_from_config(config: Dict) -> Settings:
         yolo_vehicle_path=paths.get('yolo_vehicle', 'models/yolov8s.pt'),
         efficientnet_path=paths.get('efficientnet', 'models/best_model_efficientNet_finetune.pth'),
         brand_classes=models_config.get('brand_classes', ModelSettings().brand_classes),
-        detection_threshold=float(thresholds.get('detection', 0.5)),
+        detection_threshold=float(os.environ.get('MODEL_YOLO_CONF', thresholds.get('detection', 0.25))),
         ocr_threshold=float(thresholds.get('ocr', 0.6)),
         brand_threshold=float(thresholds.get('brand', 0.7)),
     )

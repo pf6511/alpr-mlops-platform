@@ -158,7 +158,7 @@ def format_vehicle_result(vehicle_detection: dict) -> str:
     """
 
 
-def process_upload(image, conf_threshold=0.5, run_branch2=True):
+def process_upload(image, conf_threshold=None, run_branch2=True):
     """
     Process uploaded image through ALPR pipeline.
     
@@ -454,7 +454,8 @@ with gr.Blocks(css=custom_css, title="ALPR Engine - LEAD Edition") as demo:
                     image_input = gr.Image(type="pil", label="Upload Image")
                     
                     conf_slider = gr.Slider(
-                        minimum=0.1, maximum=0.9, value=0.5, step=0.05,
+                        minimum=0.1, maximum=0.9,
+                        value=settings.models.detection_threshold, step=0.05,
                         label="Detection Threshold"
                     )
                     

@@ -10,7 +10,7 @@ import tempfile
 import os
 
 
-def create_annotated_video(pipeline, video_path, output_path, conf_threshold=0.5, max_fps=10):
+def create_annotated_video(pipeline, video_path, output_path, conf_threshold=None, max_fps=10):
     """
     Create annotated video with license plate detections.
     
@@ -154,7 +154,7 @@ def create_annotated_video(pipeline, video_path, output_path, conf_threshold=0.5
     }
 
 
-def process_gif(pipeline, gif_path, output_path, conf_threshold=0.5, max_frames=50):
+def process_gif(pipeline, gif_path, output_path, conf_threshold=None, max_frames=50):
     """
     Process animated GIF and create annotated version.
     
@@ -244,7 +244,7 @@ def process_gif(pipeline, gif_path, output_path, conf_threshold=0.5, max_frames=
     }
 
 
-def sample_video_frames(pipeline, video_path, num_samples=10, conf_threshold=0.5):
+def sample_video_frames(pipeline, video_path, num_samples=10, conf_threshold=None):
     """
     Sample and process frames from video for quick preview.
     

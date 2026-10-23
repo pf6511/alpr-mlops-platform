@@ -108,7 +108,9 @@ models:
   
   # Seuils de confiance
   thresholds:
-    detection: 0.5
+    # Seuil YOLO plaque. 0.5 manquait des plaques en vue arrière ;
+    # surchargeable par la variable d'environnement MODEL_YOLO_CONF
+    detection: 0.25
     ocr: 0.6
     brand: 0.7
 
