@@ -339,17 +339,24 @@ class ALPRPipeline:
     # BRANCHE 1: PLAQUE
     # ═══════════════════════════════════════════════════════════════════════════
     
-    def detect_plates(self, image: np.ndarray, conf_threshold: float = 0.5) -> List[Dict]:
+    def _resolve_threshold(self, conf_threshold: Optional[float]) -> float:
+        """Seuil explicite, sinon le seuil de détection de la configuration."""
+        if conf_threshold is None:
+            return self.model_config.detection_threshold
+        return conf_threshold
+
+    def detect_plates(self, image: np.ndarray, conf_threshold: Optional[float] = None) -> List[Dict]:
         """
         Détecte les plaques dans une image.
         
         Args:
             image: Image BGR ou RGB numpy
-            conf_threshold: Seuil de confiance
+            conf_threshold: Seuil de confiance (défaut : configuration)
             
         Returns:
             Liste de détections [{bbox, confidence, roi}, ...]
         """
+        conf_threshold = self._resolve_threshold(conf_threshold)
         if self.yolo_plate is None:
             return []
         
@@ -578,7 +585,7 @@ class ALPRPipeline:
     # ═══════════════════════════════════════════════════════════════════════════
     
     def process_image(self, image_path: Union[str, np.ndarray],
-                      conf_threshold: float = 0.25,
+                      conf_threshold: Optional[float] = None,
                       run_branch2: bool = True,
                       declared_brand: str = None) -> Dict:
         """
@@ -586,7 +593,7 @@ class ALPRPipeline:
         
         Args:
             image_path: Chemin ou image numpy BGR
-            conf_threshold: Seuil de confiance YOLO
+            conf_threshold: Seuil de confiance YOLO (défaut : configuration)
             run_branch2: Exécuter la branche 2 (véhicule + marque)
             declared_brand: Marque déclarée (pour mismatch detection)
             
@@ -732,7 +739,7 @@ class ALPRPipeline:
         }
     
     def process_video(self, video_path: str, max_frames: int = 30,
-                      conf_threshold: float = 0.5) -> List[Dict]:
+                      conf_threshold: Optional[float] = None) -> List[Dict]:
         """
         Traite les frames d'une vidéo.
         
