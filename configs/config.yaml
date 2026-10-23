@@ -44,6 +44,7 @@ storage:
     buckets:
       captures: alpr-captures
       dataset: alpr-dataset
+      artifacts: mlflow
 
 # ───────────────────────────────────────────────────────────────────────────────
 # MLFLOW

@@ -55,6 +55,12 @@ CREATE TABLE IF NOT EXISTS logs (
     marque_predite VARCHAR(50) DEFAULT NULL,
     marque_confiance REAL DEFAULT NULL,
     mismatch BOOLEAN DEFAULT FALSE,  -- TRUE si marque_predite ≠ marque_declaree
+
+    -- Boucle de validation (incohérences)
+    image_key VARCHAR(255) DEFAULT NULL,          -- clé de l'image du véhicule (bucket captures)
+    validation_status VARCHAR(10) DEFAULT NULL,   -- NULL = en attente, 'validated' ou 'rejected'
+    validated_label VARCHAR(50) DEFAULT NULL,     -- marque retenue par l'opérateur
+    validated_at TIMESTAMP DEFAULT NULL,
     
     -- Timestamp
     timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
