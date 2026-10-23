@@ -110,6 +110,19 @@ class ModelSettings:
 
 
 @dataclass
+class RetentionSettings:
+    """
+    Durées de conservation des données personnelles (RGPD, art. 5.1.e).
+
+    Les images d'incohérences (véhicule et plaque visibles) ne servent qu'à la
+    validation par un opérateur : au-delà de `captures_days`, le stockage les
+    supprime lui-même (règle de cycle de vie S3, voir src/data/retention.py).
+    """
+    captures_days: int = 30
+    captures_prefix: str = "mismatches/"
+
+
+@dataclass
 class GradioSettings:
     """Configuration Gradio."""
     server_name: str = "0.0.0.0"
@@ -129,6 +142,7 @@ class Settings:
     airflow: AirflowSettings = field(default_factory=AirflowSettings)
     models: ModelSettings = field(default_factory=ModelSettings)
     gradio: GradioSettings = field(default_factory=GradioSettings)
+    retention: RetentionSettings = field(default_factory=RetentionSettings)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -268,6 +282,13 @@ def _create_settings_from_config(config: Dict) -> Settings:
         debug=os.environ.get('GRADIO_DEBUG', str(gradio_config.get('debug', False))).lower() == 'true',
     )
     
+    # Conservation des données (RGPD)
+    retention_config = config.get('retention', {})
+    retention = RetentionSettings(
+        captures_days=int(os.environ.get('CAPTURES_RETENTION_DAYS', retention_config.get('captures_days', 30))),
+        captures_prefix=retention_config.get('captures_prefix', 'mismatches/'),
+    )
+
     return Settings(
         env=os.environ.get('ENV', config.get('env', 'development')),
         database=database,
@@ -277,6 +298,7 @@ def _create_settings_from_config(config: Dict) -> Settings:
         airflow=airflow,
         models=models,
         gradio=gradio,
+        retention=retention,
     )
 
 

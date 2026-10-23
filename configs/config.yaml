@@ -47,6 +47,16 @@ storage:
       artifacts: mlflow
 
 # ───────────────────────────────────────────────────────────────────────────────
+# CONSERVATION DES DONNÉES PERSONNELLES (RGPD)
+# Appliquée par : python -m src.data.retention --apply
+# ───────────────────────────────────────────────────────────────────────────────
+retention:
+  # Images d'incohérences (bucket captures) : utiles le temps de la validation
+  # par un opérateur, puis supprimées par le stockage lui-même.
+  captures_days: 30
+  captures_prefix: mismatches/
+
+# ───────────────────────────────────────────────────────────────────────────────
 # MLFLOW
 # ───────────────────────────────────────────────────────────────────────────────
 mlflow:
