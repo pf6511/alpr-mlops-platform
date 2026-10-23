@@ -58,9 +58,21 @@ class S3Settings:
 
 @dataclass
 class MLflowSettings:
-    """Configuration MLflow."""
+    """
+    Configuration MLflow (suivi des expériences et registre de modèles).
+
+    Le jeton d'un serveur protégé se passe par la variable d'environnement
+    MLFLOW_TRACKING_TOKEN, lue directement par MLflow (jamais dans ce fichier).
+    """
     tracking_uri: str = "./mlruns"
     experiment_prefix: str = "alpr"
+    experiment: str = "alpr-brand-classifier"
+    brand_model_name: str = "vehicle_brand_model"
+    champion_alias: str = "champion"
+    challenger_alias: str = "challenger"
+    # Origine du classificateur de marque : "registry" (MLflow, repli local) ou "local"
+    brand_model_source: str = "local"
+    cache_dir: str = "data/registry_cache"
 
 
 @dataclass
@@ -208,6 +220,12 @@ def _create_settings_from_config(config: Dict) -> Settings:
     mlflow = MLflowSettings(
         tracking_uri=os.environ.get('MLFLOW_TRACKING_URI', mlflow_config.get('tracking_uri', './mlruns')),
         experiment_prefix=mlflow_config.get('experiment_prefix', 'alpr'),
+        experiment=os.environ.get('MLFLOW_EXPERIMENT', mlflow_config.get('experiment', 'alpr-brand-classifier')),
+        brand_model_name=os.environ.get('MLFLOW_BRAND_MODEL', mlflow_config.get('brand_model_name', 'vehicle_brand_model')),
+        champion_alias=mlflow_config.get('champion_alias', 'champion'),
+        challenger_alias=mlflow_config.get('challenger_alias', 'challenger'),
+        brand_model_source=os.environ.get('MODEL_BRAND_SOURCE', mlflow_config.get('brand_model_source', 'local')),
+        cache_dir=mlflow_config.get('cache_dir', 'data/registry_cache'),
     )
     
     # Ray
