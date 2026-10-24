@@ -7,6 +7,7 @@ Ce fichier ne fait qu'assembler et démarrer :
     1. build_services() crée les composants (base, moteur d'inférence, services)
     2. build_app()      construit l'interface Gradio à partir de ces services
     3. launch()         démarre le serveur web
+    (+ la surveillance du champion : un modèle promu est chargé sans redémarrage)
 
 La logique métier est dans src/services, l'interface dans src/ui,
 l'inférence dans src/inference.
@@ -29,4 +30,5 @@ services = build_services()
 demo = build_app(services)
 
 if __name__ == "__main__":
+    services.system.start_champion_watch(services.settings.continuous.champion_refresh_minutes)
     launch(demo, services)

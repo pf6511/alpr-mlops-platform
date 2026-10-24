@@ -92,3 +92,24 @@ def test_full_mlops_cycle(mlops_env):
     # 4. Le moteur charge le champion du registre (poids sans code, weights_only)
     classifier = load_brand_bundle(registry.download().directory)
     assert classifier is not None and len(classifier.classes) == len(settings.models.brand_classes)
+
+
+def test_automatic_retraining_cycle(mlops_env):
+    """Réentraînement automatique : un cycle entraîne et juge, le suivant ne fait rien."""
+    from src.mlops.continuous import run_cycle
+    from src.mlops.registry import PROMOTION_TAG, VALIDATED_IMAGES_TAG
+
+    settings, storage, registry = mlops_env
+    settings.continuous.min_new_images = 10
+    settings.continuous.epochs = 1
+    settings.continuous.min_train_images = 1
+    settings.continuous.min_test_images = 1
+    bootstrap(settings, registry)
+
+    report = run_cycle(settings, storage, registry)
+    assert report["status"] in ("promoted", "not_promoted")
+    challenger = registry.get("challenger")
+    assert challenger.tags[VALIDATED_IMAGES_TAG] == "24"                 # mémoire du cycle
+    assert PROMOTION_TAG in challenger.tags                             # décision tracée
+
+    assert run_cycle(settings, storage, registry)["status"] == "skipped"   # idempotent

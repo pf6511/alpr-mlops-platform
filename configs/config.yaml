@@ -57,6 +57,18 @@ retention:
   captures_prefix: mismatches/
 
 # ───────────────────────────────────────────────────────────────────────────────
+# RÉENTRAÎNEMENT AUTOMATIQUE (classificateur de marque)
+# Cycle : python -m src.mlops.continuous [--loop]  (service Docker alpr-retrain)
+# ───────────────────────────────────────────────────────────────────────────────
+continuous_training:
+  interval_hours: 24          # période entre deux cycles
+  min_new_images: 20          # nouvelles images validées nécessaires pour réentraîner
+  epochs: 3
+  min_train_images: 10
+  min_test_images: 20         # garde-fou : pas de promotion sur un test trop petit
+  champion_refresh_minutes: 10   # l'application recharge le nouveau champion (0 = jamais)
+
+# ───────────────────────────────────────────────────────────────────────────────
 # MLFLOW
 # ───────────────────────────────────────────────────────────────────────────────
 mlflow:
