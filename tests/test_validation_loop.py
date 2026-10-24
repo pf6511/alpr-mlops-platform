@@ -52,8 +52,11 @@ def test_validated_mismatch_reaches_dataset(tmp_path):
     assert len(pending) == 1
     assert pending[0].image_path == outcome.mismatch_image_key
 
+    assert detector.get_stats()["queue_size"] == 1                     # compteur « En attente »
+
     # 3. L'opérateur valide : la base avait raison
     message = ValidationService(detector).act("AB123CD", VALIDATE_DECLARED)
+    assert detector.get_stats()["queue_size"] == 0                     # le compteur suit la décision
     assert "image ajoutée au jeu de données" in message
 
     # 4. L'image est dans le jeu de données, rangée sous la bonne marque

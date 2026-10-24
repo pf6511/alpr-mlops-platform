@@ -182,3 +182,15 @@ def test_application_reloads_only_when_champion_changes():
     assert loaded == ["registry:m@champion (v2)"]
     assert system.refresh_champion_if_changed()[0] is False                      # pas de rechargement inutile
     assert SystemService(engine, get_settings(), registry=None).start_champion_watch(10) is None
+
+
+def test_validation_tab_shows_progress_towards_retraining():
+    from src.services.validation import ValidationService
+    from src.ui.formatters import dataset_stats
+
+    registry, storage = bootstrapped_registry(), FakeStorage(["renault"] * 7)
+    progress = continuous.retraining_progress(settings(min_new_images=5), storage, registry)
+    assert progress == {"new_images": 7, "threshold": 5, "validated_images": 7, "will_retrain": True}
+
+    html = dataset_stats(ValidationService(None, lambda: progress).stats())
+    assert "7 / 5" in html and "prochain cycle" in html

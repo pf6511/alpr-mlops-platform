@@ -87,6 +87,14 @@ def decide_trigger(validated_images: int, last_trained: int, min_new_images: int
                            validated_images, last_trained)
 
 
+def retraining_progress(settings: Settings, storage, registry: BrandModelRegistry) -> Dict[str, Any]:
+    """Où en est le prochain réentraînement ? (affiché dans l'onglet Validation)."""
+    decision = decide_trigger(count_validated(storage, settings.models.brand_classes),
+                              last_trained_count(registry), settings.continuous.min_new_images)
+    return {"new_images": decision.new_images, "threshold": settings.continuous.min_new_images,
+            "validated_images": decision.validated_images, "will_retrain": decision.run}
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # CYCLE
 # ═══════════════════════════════════════════════════════════════════════════════

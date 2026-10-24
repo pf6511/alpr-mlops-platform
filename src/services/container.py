@@ -72,6 +72,15 @@ def _registry_and_champion(settings: Settings):
     return registry, bundle
 
 
+def _retraining_progress(settings: Settings, storage, registry):
+    """Progression du réentraînement automatique, si le registre et le stockage sont disponibles."""
+    if registry is None or storage is None:
+        return None
+    from src.mlops.continuous import retraining_progress
+
+    return lambda: retraining_progress(settings, storage, registry)
+
+
 def build_services(settings: Optional[Settings] = None,
                    engine: Optional[ALPREngine] = None,
                    db=None) -> Services:
@@ -87,7 +96,7 @@ def build_services(settings: Optional[Settings] = None,
         settings=settings,
         capture=ALPRService(engine, db, mismatch_detector=detector, error_gallery=ErrorGallery()),
         residents=ResidentService(db),
-        validation=ValidationService(detector),
+        validation=ValidationService(detector, _retraining_progress(settings, storage, registry)),
         history=HistoryService(db),
         system=SystemService(engine, settings, registry=registry),
     )
