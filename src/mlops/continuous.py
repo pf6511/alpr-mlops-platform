@@ -4,6 +4,7 @@ Réentraînement automatique du classificateur de marque.
     python -m src.mlops.continuous            # un cycle (déclenché par un ordonnanceur)
     python -m src.mlops.continuous --loop     # cycles périodiques (service Docker alpr-retrain)
     python -m src.mlops.continuous --force    # un cycle, même sans nouvelles images
+    python -m src.mlops.continuous --check    # décision seule : faut-il un cycle ? (DAG Airflow)
 
 Un cycle :
   0. un challenger attend encore sa promotion (cycle précédent interrompu) ? → promotion
@@ -43,6 +44,8 @@ logger = logging.getLogger(__name__)
 
 DATA_DIR = Path("data")
 LOCK_FILE = DATA_DIR / "retrain.lock"
+# Dernière ligne de la sortie : le résultat en JSON compact, lu par le DAG Airflow
+RESULT_PREFIX = "ALPR_RESULT "
 HISTORY_FILE = DATA_DIR / "retrain_history.jsonl"
 
 
@@ -85,6 +88,21 @@ def decide_trigger(validated_images: int, last_trained: int, min_new_images: int
                                validated_images, last_trained)
     return TriggerDecision(False, f"{new} nouvelle(s) image(s) validée(s) < {min_new_images} : rien à faire",
                            validated_images, last_trained)
+
+
+def check(settings: Optional[Settings] = None, storage=None,
+          registry: Optional[BrandModelRegistry] = None) -> Dict[str, Any]:
+    """Faut-il lancer un cycle ? Même règle que run_cycle, sans rien entraîner (lecture seule)."""
+    settings = settings or get_settings()
+    registry = registry or BrandModelRegistry(settings.mlflow)
+    if storage is None:
+        from src.data.storage import get_storage
+        storage = get_storage()
+    if pending_challenger(registry, settings) is not None:
+        return {"run": True, "reason": "challenger en attente de promotion"}
+    decision = decide_trigger(count_validated(storage, settings.models.brand_classes),
+                              last_trained_count(registry), settings.continuous.min_new_images)
+    return asdict(decision) | {"new_images": decision.new_images}
 
 
 def retraining_progress(settings: Settings, storage, registry: BrandModelRegistry) -> Dict[str, Any]:
@@ -219,16 +237,26 @@ def guarded_cycle(force: bool = False, **kwargs) -> Dict[str, Any]:
 # CLI
 # ═══════════════════════════════════════════════════════════════════════════════
 
+def emit(result: Dict[str, Any]) -> None:
+    """Affiche le résultat lisiblement, puis sur une ligne compacte pour les ordonnanceurs."""
+    print(json.dumps(result, indent=2, ensure_ascii=False, default=str))
+    print(RESULT_PREFIX + json.dumps(result, ensure_ascii=False, default=str), flush=True)
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Réentraînement automatique du classificateur de marque")
     parser.add_argument("--loop", action="store_true", help="Cycles périodiques (continuous_training.interval_hours)")
     parser.add_argument("--force", action="store_true", help="Réentraîner même sans nouvelles images")
+    parser.add_argument("--check", action="store_true", help="Décision seule (aucun entraînement)")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
 
+    if args.check:
+        emit(check())
+        return 0
     if not args.loop:
         report = guarded_cycle(force=args.force)
-        print(json.dumps(report, indent=2, ensure_ascii=False, default=str))
+        emit(report)
         return 1 if report["status"] == "error" else 0
 
     interval_s = get_settings().continuous.interval_hours * 3600
