@@ -28,6 +28,10 @@ logger = logging.getLogger(__name__)
 
 ARTIFACT_PATH = "brand_model"
 
+# Tags posés sur les versions
+VALIDATED_IMAGES_TAG = "validated_images"   # images validées utilisées pour l'entraîner
+PROMOTION_TAG = "promotion"                 # décision de promotion (« promoted: … » / « rejected: … »)
+
 
 @dataclass
 class RegisteredBrandModel:
@@ -84,6 +88,16 @@ class BrandModelRegistry:
             version=str(mv.version), run_id=mv.run_id, source=mv.source,
             aliases=list(getattr(mv, "aliases", []) or []), tags=dict(getattr(mv, "tags", {}) or {}),
         )
+
+    def versions(self) -> List[RegisteredBrandModel]:
+        """Toutes les versions du modèle (liste vide si le modèle n'est pas encore enregistré)."""
+        try:
+            found = self.client.search_model_versions(f"name='{self.name}'")
+        except Exception:  # noqa: BLE001 - modèle absent
+            return []
+        return [RegisteredBrandModel(version=str(mv.version), run_id=mv.run_id, source=mv.source,
+                                     aliases=list(getattr(mv, "aliases", []) or []),
+                                     tags=dict(getattr(mv, "tags", {}) or {})) for mv in found]
 
     def download(self, alias: Optional[str] = None) -> Optional[BrandBundleRef]:
         """Télécharge le paquet de la version portant `alias` (champion par défaut), avec cache local."""

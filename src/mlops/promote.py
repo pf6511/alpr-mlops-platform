@@ -25,7 +25,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from configs.settings import Settings, get_settings  # noqa: E402
 from src.inference.loader import read_bundle  # noqa: E402
-from src.mlops.registry import BrandModelRegistry  # noqa: E402
+from src.mlops.registry import PROMOTION_TAG, BrandModelRegistry  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +96,9 @@ def run_promotion(settings: Optional[Settings] = None, storage=None, registry: O
     challenger_state, classes, manifest = read_bundle(registry.download(cfg.challenger_alias).directory)
     champion_state, champion_classes, _ = read_bundle(registry.download(cfg.champion_alias).directory)
     if list(champion_classes) != list(classes):
-        return {"promoted": False, "reason": "classes différentes entre champion et challenger"}
+        reason = "classes différentes entre champion et challenger"
+        registry.tag_version(challenger_ref.version, PROMOTION_TAG, f"rejected: {reason}")
+        return {"promoted": False, "reason": reason}
 
     with tempfile.TemporaryDirectory() as tmp:
         items, missing = _test_items(manifest, classes, storage, Path(tmp))
@@ -106,7 +108,7 @@ def run_promotion(settings: Optional[Settings] = None, storage=None, registry: O
 
     decision = decide_promotion(champion_m, challenger_m, min_test_images, f1_tolerance)
     status = "promoted" if decision.promote else "rejected"
-    registry.tag_version(challenger_ref.version, "promotion", f"{status}: {decision.reason}")
+    registry.tag_version(challenger_ref.version, PROMOTION_TAG, f"{status}: {decision.reason}")
     if decision.promote:
         registry.set_alias(cfg.champion_alias, challenger_ref.version)
         if champion_ref is not None:

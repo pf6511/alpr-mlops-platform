@@ -260,8 +260,9 @@ class MismatchDetector:
             try:
                 stats = self.db.get_statistics()
                 return stats.get('mismatches_pending', 0)
-            except:
-                pass
+            except Exception as e:
+                # ne pas masquer l'erreur : la file en mémoire ne reflète pas les décisions en base
+                print(f"⚠️ Statistiques de la base indisponibles: {e}")
         
         return len([r for r in self._queue if r.status == "pending"])
     

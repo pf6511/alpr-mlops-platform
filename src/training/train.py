@@ -30,7 +30,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from configs.settings import Settings, get_settings  # noqa: E402
 from src.inference.loader import read_bundle  # noqa: E402
 from src.mlops.bundle import write_bundle  # noqa: E402
-from src.mlops.registry import BrandModelRegistry  # noqa: E402
+from src.mlops.registry import VALIDATED_IMAGES_TAG, BrandModelRegistry  # noqa: E402
 from src.training import trainer  # noqa: E402
 from src.training.dataset import build_manifest, collect_base, collect_validated, materialize, split_samples  # noqa: E402
 from src.training.metrics import classification_metrics  # noqa: E402
@@ -101,7 +101,9 @@ def run_training(settings: Optional[Settings] = None, storage=None, registry: Op
         }
         version = registry.register(
             bundle, run_name=f"train-{manifest['dataset_id']}", params=params, metrics=metrics, history=history,
-            tags={"origin": "training", "dataset_id": manifest["dataset_id"], "parent": champion.label},
+            tags={"origin": "training", "dataset_id": manifest["dataset_id"], "parent": champion.label,
+                  # mémoire du réentraînement automatique : images validées vues par cette version
+                  VALIDATED_IMAGES_TAG: str(manifest["counts"]["by_origin"].get("validated", 0))},
             alias=settings.mlflow.challenger_alias,
         )
 

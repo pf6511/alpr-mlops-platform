@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import logging
+import threading
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from src.inference import ALPREngine
 from src.inference.loader import PROJECT_ROOT
 
 MODELS_DIR = Path("models")
+
+logger = logging.getLogger(__name__)
 
 
 class SystemService:
@@ -46,6 +50,42 @@ class SystemService:
         if bundle is None:
             return False, "❌ Aucun champion dans le registre"
         return self.engine.replace_brand_classifier(bundle)
+
+    def refresh_champion_if_changed(self) -> Tuple[bool, str]:
+        """Charge le champion du registre seulement si sa version a changé (appel périodique)."""
+        if self.registry is None:
+            return False, "registre désactivé"
+        champion = self.registry.get(self.settings.mlflow.champion_alias)
+        if champion is None:
+            return False, "aucun champion dans le registre"
+        current = self.engine.models.sources.get("brand_classifier", "")
+        if current.startswith("registry:") and current.endswith(f"(v{champion.version})"):
+            return False, f"champion inchangé (v{champion.version})"
+        logger.info("Nouveau champion v%s dans le registre : rechargement", champion.version)
+        return self.reload_brand_champion()
+
+    def start_champion_watch(self, interval_minutes: float) -> Optional[threading.Thread]:
+        """
+        Vérifie le champion toutes les `interval_minutes` en tâche de fond : une promotion
+        par le réentraînement automatique est prise en compte sans redémarrer l'application.
+        """
+        if self.registry is None or interval_minutes <= 0:
+            return None
+
+        def watch():
+            stop = threading.Event()
+            while not stop.wait(interval_minutes * 60):
+                try:
+                    changed, message = self.refresh_champion_if_changed()
+                    if changed:
+                        logger.info(message)
+                except Exception as exc:  # noqa: BLE001 - registre injoignable : on garde le modèle actuel
+                    logger.warning("Vérification du champion impossible : %s", exc)
+
+        thread = threading.Thread(target=watch, name="champion-watch", daemon=True)
+        thread.start()
+        logger.info("Surveillance du champion : toutes les %s min", interval_minutes)
+        return thread
 
     def info(self) -> Dict[str, Any]:
         return {

@@ -123,6 +123,23 @@ class RetentionSettings:
 
 
 @dataclass
+class ContinuousTrainingSettings:
+    """
+    Réentraînement automatique du classificateur de marque (src/mlops/continuous.py).
+
+    Un cycle : assez de nouvelles images validées ? → entraînement → promotion.
+    L'application vérifie la version du champion toutes les
+    `champion_refresh_minutes` et charge la nouvelle sans redémarrer.
+    """
+    interval_hours: float = 24.0        # période entre deux cycles (mode --loop)
+    min_new_images: int = 20            # nouvelles images validées pour déclencher
+    epochs: int = 3
+    min_train_images: int = 10
+    min_test_images: int = 20           # garde-fou de la promotion
+    champion_refresh_minutes: float = 10.0   # 0 = pas de rechargement automatique
+
+
+@dataclass
 class GradioSettings:
     """Configuration Gradio."""
     server_name: str = "0.0.0.0"
@@ -143,6 +160,7 @@ class Settings:
     models: ModelSettings = field(default_factory=ModelSettings)
     gradio: GradioSettings = field(default_factory=GradioSettings)
     retention: RetentionSettings = field(default_factory=RetentionSettings)
+    continuous: ContinuousTrainingSettings = field(default_factory=ContinuousTrainingSettings)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -289,6 +307,18 @@ def _create_settings_from_config(config: Dict) -> Settings:
         captures_prefix=retention_config.get('captures_prefix', 'mismatches/'),
     )
 
+    # Réentraînement automatique
+    ct_config = config.get('continuous_training', {})
+    defaults = ContinuousTrainingSettings()
+    continuous = ContinuousTrainingSettings(
+        interval_hours=float(os.environ.get('RETRAIN_INTERVAL_HOURS', ct_config.get('interval_hours', defaults.interval_hours))),
+        min_new_images=int(os.environ.get('RETRAIN_MIN_NEW_IMAGES', ct_config.get('min_new_images', defaults.min_new_images))),
+        epochs=int(ct_config.get('epochs', defaults.epochs)),
+        min_train_images=int(ct_config.get('min_train_images', defaults.min_train_images)),
+        min_test_images=int(os.environ.get('RETRAIN_MIN_TEST_IMAGES', ct_config.get('min_test_images', defaults.min_test_images))),
+        champion_refresh_minutes=float(os.environ.get('CHAMPION_REFRESH_MINUTES', ct_config.get('champion_refresh_minutes', defaults.champion_refresh_minutes))),
+    )
+
     return Settings(
         env=os.environ.get('ENV', config.get('env', 'development')),
         database=database,
@@ -299,6 +329,7 @@ def _create_settings_from_config(config: Dict) -> Settings:
         models=models,
         gradio=gradio,
         retention=retention,
+        continuous=continuous,
     )
 
 

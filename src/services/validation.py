@@ -7,7 +7,10 @@ de données de réentraînement (boucle d'amélioration continue).
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+import logging
+from typing import Any, Callable, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 # Actions possibles sur une incohérence
 VALIDATE_PREDICTED = "validate_predicted"   # le modèle avait raison, la base se trompe
@@ -17,8 +20,10 @@ CUSTOM = "custom"                           # ni l'un ni l'autre : marque saisie
 
 
 class ValidationService:
-    def __init__(self, mismatch_detector=None):
+    def __init__(self, mismatch_detector=None, retraining_progress: Optional[Callable[[], Dict]] = None):
         self.detector = mismatch_detector
+        # Progression vers le prochain réentraînement (même règle que src.mlops.continuous)
+        self.retraining_progress = retraining_progress
 
     @property
     def available(self) -> bool:
@@ -28,7 +33,13 @@ class ValidationService:
         return self.detector.get_pending(limit=limit) if self.detector else []
 
     def stats(self) -> Dict[str, Any]:
-        return self.detector.get_stats() if self.detector else {}
+        stats = self.detector.get_stats() if self.detector else {}
+        if self.retraining_progress is not None:
+            try:
+                stats["retraining"] = self.retraining_progress()
+            except Exception as exc:  # noqa: BLE001 - registre ou stockage injoignable
+                logger.warning("Progression du réentraînement indisponible : %s", exc)
+        return stats
 
     def act(self, plaque: str, action: str, correct_brand: str = "") -> str:
         """Applique une décision de l'opérateur à l'incohérence de cette plaque."""

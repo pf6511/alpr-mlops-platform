@@ -5,4 +5,6 @@ MLOps : registre de modèles et cycle de vie (seul paquet qui parle à MLflow).
     bundle.py     format du paquet de modèle (poids sans code + classes + manifeste)
     bootstrap.py  python -m src.mlops.bootstrap   le modèle local devient champion
     promote.py    python -m src.mlops.promote     challenger contre champion, même test
+    continuous.py python -m src.mlops.continuous  réentraînement automatique (déclenchement,
+                                                  entraînement, promotion) ; --loop : planifié
 """

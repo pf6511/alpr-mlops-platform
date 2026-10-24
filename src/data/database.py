@@ -556,9 +556,13 @@ class DatabaseManager:
             stats['subscribers'] = row['count'] if self.mode == "postgres" else row[0]
             
             # Logs aujourd'hui
-            today = datetime.now().strftime('%Y-%m-%d')
-            ph = self._placeholder()
-            cursor.execute(f"SELECT COUNT(*) FROM logs WHERE timestamp LIKE {ph}", (f"{today}%",))
+            # PostgreSQL : timestamp est de type TIMESTAMP (LIKE y est une erreur, qui faisait
+            # échouer toute la fonction) ; SQLite : le timestamp est stocké en texte.
+            if self.mode == "postgres":
+                cursor.execute("SELECT COUNT(*) FROM logs WHERE timestamp::date = CURRENT_DATE")
+            else:
+                today = datetime.now().strftime('%Y-%m-%d')
+                cursor.execute(f"SELECT COUNT(*) FROM logs WHERE timestamp LIKE {self._placeholder()}", (f"{today}%",))
             row = cursor.fetchone()
             stats['logs_today'] = row['count'] if self.mode == "postgres" else row[0]
             

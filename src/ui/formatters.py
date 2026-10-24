@@ -167,6 +167,16 @@ def capture_report(outcome) -> str:
     return "\n\n".join(parts)
 
 
+def _retraining_line(progress: Optional[Dict[str, Any]]) -> str:
+    """Progression vers le prochain réentraînement automatique (même règle que le cycle)."""
+    if not progress:
+        return "<p>Réentraînement automatique : <strong>registre non configuré</strong></p>"
+    status = "✅ au prochain cycle" if progress["will_retrain"] else "⏳ pas encore"
+    return (f"<p>Nouvelles images validées depuis le dernier entraînement : "
+            f"<strong>{progress['new_images']} / {progress['threshold']}</strong></p>"
+            f"<p>Réentraînement automatique : <strong>{status}</strong></p>")
+
+
 def dataset_stats(stats: Dict[str, Any]) -> str:
     if not stats:
         return "Dataset stats non disponibles"
@@ -177,7 +187,7 @@ def dataset_stats(stats: Dict[str, Any]) -> str:
         <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-top: 15px;">
             <div style="background: #334155; padding: 15px; border-radius: 8px; text-align: center;">
                 <p style="font-size: 24px; font-weight: bold; color: #22c55e;">{stats.get('total_detected', 0)}</p>
-                <p style="color: #94a3b8;">Détectés</p>
+                <p style="color: #94a3b8;">Détectés (depuis le démarrage)</p>
             </div>
             <div style="background: #334155; padding: 15px; border-radius: 8px; text-align: center;">
                 <p style="font-size: 24px; font-weight: bold; color: #eab308;">{stats.get('queue_size', stats.get('pending', 0))}</p>
@@ -192,7 +202,7 @@ def dataset_stats(stats: Dict[str, Any]) -> str:
         <h4 style="color: #94a3b8;">Dataset labellisé:</h4>
         <p>Total images: <strong>{dataset.get('total', 0)}</strong></p>
         <p>Taille: <strong>{dataset.get('size_mb', 0):.2f} MB</strong></p>
-        <p>Prêt pour retraining: <strong>{'✅ Oui' if stats.get('ready_for_retraining') else '❌ Non'}</strong></p>
+        {_retraining_line(stats.get("retraining"))}
     </div>
     """
 

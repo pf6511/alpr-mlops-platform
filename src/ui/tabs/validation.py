@@ -20,7 +20,8 @@ def build(services: Services, demo: gr.Blocks) -> None:
 
     def act(action):
         def handler(plaque, correct_brand):
-            return validation.act(plaque, action, correct_brand), refresh_queue()
+            # la décision met à jour la liste ET les statistiques
+            return validation.act(plaque, action, correct_brand), refresh_queue(), refresh_stats()
         return handler
 
     def on_row_select(evt: gr.SelectData, table):
@@ -56,7 +57,7 @@ def build(services: Services, demo: gr.Blocks) -> None:
                 refresh_queue_btn = gr.Button("🔄 Rafraîchir la liste")
 
         inputs = [selected_plaque, correct_brand]
-        outputs = [validation_msg, mismatch_table]
+        outputs = [validation_msg, mismatch_table, stats_html]
         btn_predicted.click(fn=act(VALIDATE_PREDICTED), inputs=inputs, outputs=outputs)
         btn_declared.click(fn=act(VALIDATE_DECLARED), inputs=inputs, outputs=outputs)
         btn_custom.click(fn=act(CUSTOM), inputs=inputs, outputs=outputs)
