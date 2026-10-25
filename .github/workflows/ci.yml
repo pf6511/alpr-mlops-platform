@@ -1,7 +1,7 @@
 name: CI
 
 # Intégration continue (job « test ») puis déploiement continu (job « publish-image ») :
-# après une CI verte sur dev ou main, l'image est publiée sur le registre de conteneurs
+# après une CI verte sur dev_pieric, dev ou main, l'image est publiée sur le registre de conteneurs
 # GitHub (GHCR). La production la récupère : docker compose -f docker-compose.yml
 # -f docker-compose.prod.yml pull && ... up -d
 
@@ -10,6 +10,7 @@ on:
     branches:
       - main
       - dev
+      - dev_pieric
       - micka2
       - "feature/**"
       - "refactor/**"
@@ -17,6 +18,7 @@ on:
     branches:
       - main
       - dev
+      - dev_pieric
       - "refactor/**"
 
 jobs:
@@ -85,11 +87,11 @@ jobs:
         run: docker compose -f docker/docker-compose.yml down
 
   # ───────────────────────────────────────────────────────────────────────────
-  # Déploiement continu : publication de l'image validée (push sur dev ou main)
+  # Déploiement continu : publication de l'image validée (push sur dev_pieric, dev ou main)
   # ───────────────────────────────────────────────────────────────────────────
   publish-image:
     needs: test
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main')
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/dev_pieric' || github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     permissions:
       contents: read

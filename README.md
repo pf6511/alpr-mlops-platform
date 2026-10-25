@@ -9,7 +9,7 @@ Contrôle l'accès d'un parking privé par lecture de plaque, détecte les plaqu
 ![Airflow](https://img.shields.io/badge/Airflow-2.7-teal)
 
 ```bash
-git clone https://github.com/pf6511/alpr-mlops-platform
+git clone -b dev_pieric https://github.com/pf6511/alpr-mlops-platform
 ```
 
 ## 🎯 Fonctionnalités

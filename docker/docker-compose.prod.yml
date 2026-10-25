@@ -6,12 +6,12 @@
 #
 # L'image vient de ghcr.io (publiée après une CI verte) ; le code n'est plus monté
 # depuis le poste : seul ce qui a passé les tests tourne. ALPR_IMAGE_TAG choisit la
-# version (dev par défaut, ou sha-<commit> pour revenir à une version précise).
+# version (dev_pieric par défaut, ou sha-<commit> pour revenir à une version précise).
 # ═══════════════════════════════════════════════════════════════════════════════
 
 services:
   alpr-engine:
-    image: ghcr.io/${GHCR_OWNER:-pf6511}/alpr-engine:${ALPR_IMAGE_TAG:-dev}
+    image: ghcr.io/${GHCR_OWNER:-pf6511}/alpr-engine:${ALPR_IMAGE_TAG:-dev_pieric}
     build: !reset null
     pull_policy: always
     volumes: !override
@@ -19,7 +19,7 @@ services:
       - alpr-data:/app/data
 
   alpr-retrain:
-    image: ghcr.io/${GHCR_OWNER:-pf6511}/alpr-engine:${ALPR_IMAGE_TAG:-dev}
+    image: ghcr.io/${GHCR_OWNER:-pf6511}/alpr-engine:${ALPR_IMAGE_TAG:-dev_pieric}
     build: !reset null
     pull_policy: always
     volumes: !override
