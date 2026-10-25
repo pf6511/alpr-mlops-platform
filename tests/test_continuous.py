@@ -194,3 +194,36 @@ def test_validation_tab_shows_progress_towards_retraining():
 
     html = dataset_stats(ValidationService(None, lambda: progress).stats())
     assert "7 / 5" in html and "prochain cycle" in html
+
+
+def test_check_decides_without_training():
+    registry = bootstrapped_registry()
+    decision = continuous.check(settings(min_new_images=5), FakeStorage(["renault"] * 6), registry)
+    assert decision["run"] is True and decision["new_images"] == 6
+    assert len(registry.versions()) == 1                               # rien n'a été entraîné
+
+    registry.add(tags={VALIDATED_IMAGES_TAG: "6"}, alias="challenger")  # challenger jamais jugé
+    assert continuous.check(settings(), FakeStorage([]), registry)["reason"] == "challenger en attente de promotion"
+
+
+def test_result_line_is_machine_readable(capsys):
+    continuous.emit({"status": "skipped", "reason": "é"})
+    last = capsys.readouterr().out.strip().splitlines()[-1]
+    assert last.startswith(continuous.RESULT_PREFIX)
+    assert json.loads(last[len(continuous.RESULT_PREFIX):])["reason"] == "é"
+
+
+def test_airflow_dag_is_valid():
+    """Le DAG se charge et enchaîne check_trigger → retrain_cycle → report (si Airflow est installé)."""
+    import pytest
+
+    # « airflow.models » et pas « airflow » : le dossier airflow/ du dépôt est importable sous ce nom
+    pytest.importorskip("airflow.models")
+    from pathlib import Path
+
+    from airflow.models import DagBag
+
+    bag = DagBag(dag_folder=str(Path(__file__).parents[1] / "airflow" / "dags"), include_examples=False)
+    assert bag.import_errors == {}
+    dag = bag.get_dag("alpr_brand_retraining")
+    assert [t.task_id for t in dag.topological_sort()] == ["check_trigger", "retrain_cycle", "report"]
