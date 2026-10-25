@@ -1,0 +1,26 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# ALPR - surcharge « production » : l'image publiée par la CI/CD remplace le build local
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# L'image vient de ghcr.io (publiée après une CI verte) ; le code n'est plus monté
+# depuis le poste : seul ce qui a passé les tests tourne. ALPR_IMAGE_TAG choisit la
+# version (dev par défaut, ou sha-<commit> pour revenir à une version précise).
+# ═══════════════════════════════════════════════════════════════════════════════
+
+services:
+  alpr-engine:
+    image: ghcr.io/${GHCR_OWNER:-pf6511}/alpr-engine:${ALPR_IMAGE_TAG:-dev}
+    build: !reset null
+    pull_policy: always
+    volumes: !override
+      - ../outputs:/app/outputs
+      - alpr-data:/app/data
+
+  alpr-retrain:
+    image: ghcr.io/${GHCR_OWNER:-pf6511}/alpr-engine:${ALPR_IMAGE_TAG:-dev}
+    build: !reset null
+    pull_policy: always
+    volumes: !override
+      - alpr-data:/app/data
