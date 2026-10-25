@@ -188,7 +188,10 @@ services:
     image: apache/airflow:2.7.3-python3.10
     container_name: alpr-airflow
     restart: unless-stopped
+    # Orchestration du réentraînement (DAG airflow/dags/alpr_brand_retraining.py) :
+    #   docker compose --profile airflow up -d airflow      → http://localhost:8080
     profiles:
+      - airflow
       - full
     command: standalone
     environment:
@@ -200,14 +203,23 @@ services:
       - _AIRFLOW_WWW_USER_CREATE=true
       - _AIRFLOW_WWW_USER_USERNAME=admin
       - _AIRFLOW_WWW_USER_PASSWORD=${AIRFLOW_PASSWORD:-admin}
+      # SDK Docker (déjà présent dans l'image officielle ; installé sinon)
+      - _PIP_ADDITIONAL_REQUIREMENTS=docker>=6.1
+      # Conteneur dans lequel le DAG exécute les commandes du projet
+      - ALPR_ENGINE_CONTAINER=alpr-engine
     volumes:
       - ../airflow/dags:/opt/airflow/dags:ro
       - airflow-logs:/opt/airflow/logs
+      # Accès à l'API Docker pour piloter alpr-engine (compromis de développement :
+      # en production, KubernetesPodOperator ou image Airflow dédiée)
+      - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "8080:8080"
     depends_on:
       postgres:
         condition: service_healthy
+      alpr-engine:
+        condition: service_started
     networks:
       - alpr-network
 
