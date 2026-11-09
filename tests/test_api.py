@@ -64,6 +64,7 @@ def test_access_requires_key():
         response = post_access(client, key="mauvaise-cle")
     assert response.status_code == 401
     assert response.json()["error"] == "UNAUTHORIZED" and response.json()["request_id"]
+    assert response.headers["X-Request-ID"] == response.json()["request_id"]   # même identifiant
     assert db.logs == []                              # rien n'est traité sans clé
 
 

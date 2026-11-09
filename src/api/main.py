@@ -34,18 +34,24 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import Depends, FastAPI, File, Form, Header, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Request, Security, UploadFile
 from fastapi.responses import JSONResponse
+from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, ConfigDict
 
 from src.inference.images import decode_image_bytes
 from src.services.capture import REASON_NO_PLATE
 
+# Logs de l'API visibles dans « docker logs » (uvicorn n'affiche par défaut que les siens)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("alpr.api")
 
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png"}
 
-
+# Schéma de sécurité déclaré dans le contrat OpenAPI : bouton « Authorize » dans /docs
+API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False,
+                              description="Clé d'API de la borne (variable ALPR_API_KEY)")
+                              
 # ------------------------------------------------------------------------------
 # CONTRAT : schémas des réponses
 # ------------------------------------------------------------------------------
@@ -145,9 +151,9 @@ def create_app(services=None, api_key: Optional[str] = None,
         return response
 
     # -- Sécurité : clé d'API ------------------------------------------------
-    def require_api_key(x_api_key: str = Header(default="")) -> None:
+    def require_api_key(x_api_key: Optional[str] = Security(API_KEY_HEADER)) -> None:
         # compare_digest : comparaison en temps constant (pas d'indice par le temps de réponse)
-        if not secrets.compare_digest(x_api_key.encode(), api_key.encode()):
+        if not x_api_key or not secrets.compare_digest(x_api_key.encode(), api_key.encode()):
             raise ApiError(401, "UNAUTHORIZED", "Clé d'API absente ou invalide")
 
     def brand_model_label(svc) -> str:
