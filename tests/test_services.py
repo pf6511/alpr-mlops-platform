@@ -12,6 +12,7 @@ from types import SimpleNamespace
 import pytest
 
 from src.services import ALPRService, decide_access
+from src.services.capture import REASON_ACCESS_REVOKED, REASON_AUTHORIZED, REASON_UNKNOWN_PLATE
 from src.services.history import HistoryService
 from src.services.residents import ResidentService
 from src.services.validation import CUSTOM, REJECT, VALIDATE_DECLARED, VALIDATE_PREDICTED, ValidationService
@@ -196,6 +197,12 @@ def test_decide_access_rule():
     assert decide_access("X", {"acces": "OUI "}).authorized is True
     assert decide_access("X", {"acces": "non"}).authorized is False
     assert decide_access("X", None).message == "⛔ ACCESS DENIED: X"
+
+
+def test_decide_access_reason():
+    assert decide_access("X", {"acces": "oui"}).reason == REASON_AUTHORIZED
+    assert decide_access("X", {"acces": "non"}).reason == REASON_ACCESS_REVOKED
+    assert decide_access("X", None).reason == REASON_UNKNOWN_PLATE
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

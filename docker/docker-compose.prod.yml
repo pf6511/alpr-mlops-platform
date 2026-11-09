@@ -18,6 +18,13 @@ services:
       - ../outputs:/app/outputs
       - alpr-data:/app/data
 
+  alpr-api:
+    image: ghcr.io/${GHCR_OWNER:-pf6511}/alpr-engine:${ALPR_IMAGE_TAG:-dev_pieric}
+    build: !reset null
+    pull_policy: always
+    volumes: !override
+      - alpr-data:/app/data
+
   alpr-retrain:
     image: ghcr.io/${GHCR_OWNER:-pf6511}/alpr-engine:${ALPR_IMAGE_TAG:-dev_pieric}
     build: !reset null

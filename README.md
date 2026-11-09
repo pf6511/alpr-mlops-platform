@@ -18,6 +18,7 @@ git clone -b dev_pieric https://github.com/pf6511/alpr-mlops-platform
 |---|---|
 | Inférence | 4 modèles en deux branches : YOLO (plaque) → fast-plate-ocr (texte) ; YOLOv8s COCO (véhicule) → EfficientNet B0 (marque, 22 classes) |
 | Métier | Décision d'accès (résident connu et accès autorisé), alerte quand la marque prédite ≠ marque déclarée |
+| API | API REST sécurisée (clé d'API) pour les équipements du parking : image → décision d'accès motivée ; l'interface Gradio reste le back office |
 | Apprentissage actif | Image de l'incohérence conservée, validée par l'opérateur, ajoutée au jeu d'entraînement `labeled/<marque>/` |
 | MLOps | Registre MLflow (alias `champion` / `challenger`), paquets de modèle sans code, manifeste de lignage, règle de promotion explicite |
 | Réentraînement automatique | Cycle déclenché par les données (≥ 20 nouvelles images validées), orchestré par Airflow ; l'application charge le nouveau champion sans redémarrer |
@@ -27,7 +28,7 @@ git clone -b dev_pieric https://github.com/pf6511/alpr-mlops-platform
 ## 🏗️ Architecture
 
 ```
-POINTS D'ENTRÉE   Interface Gradio (src/ui) · API Ray Serve · CLI · Ordonnanceurs (DAG Airflow, alpr-retrain)
+POINTS D'ENTRÉE   Interface Gradio (src/ui, back office) · API REST (src/api, bornes) · CLI · Ordonnanceurs (DAG Airflow, alpr-retrain)
         │
 MÉTIER            src/services : capture (décision d'accès, incohérences), résidents, validation, système
         │         container.py : assemblage unique
@@ -48,11 +49,12 @@ alpr-mlops-platform/
 │   ├── inference/             # Moteur unique ALPREngine, modèles, chargement
 │   ├── services/              # Règles métier, assemblage (container.py)
 │   ├── ui/                    # Interface Gradio (un fichier par onglet)
+│   ├── api/                   # API REST FastAPI des équipements
 │   ├── data/                  # Base, stockage S3, rétention RGPD
 │   ├── models/                # Détecteur d'incohérences, façade historique
 │   ├── mlops/                 # Registre, bootstrap, promotion, cycle automatique
 │   ├── training/              # Jeu de données, entraînement, métriques
-│   └── serving/               # API Ray Serve
+│   └── serving/               # API Ray Serve (option de montée en charge)
 ├── pipelines/                 # CLI d'inférence
 ├── airflow/dags/              # DAG alpr_brand_retraining
 ├── docker/                    # Dockerfile, docker-compose.yml, surcharge de production
@@ -65,7 +67,7 @@ alpr-mlops-platform/
 
 ```bash
 cd docker
-cp env.cloud.example .env        # puis compléter (MLflow, AWS) — ne jamais versionner .env
+cp env.cloud.example .env        # puis compléter (MLflow, AWS)
 docker compose up -d             # application, PostgreSQL, MinIO
 ```
 
@@ -73,6 +75,7 @@ docker compose up -d             # application, PostgreSQL, MinIO
 |---|---|---|
 | Application | http://localhost:7860 | `docker compose up -d` |
 | MinIO | http://localhost:9001 | `docker compose up -d` |
+| API REST (documentation interactive) | http://localhost:8000/docs | `docker compose --profile api up -d alpr-api` (exige `ALPR_API_KEY`) |
 | Airflow | http://localhost:8080 | `docker compose --profile airflow up -d airflow` |
 | Réentraînement planifié (sans Airflow) | — | `docker compose --profile mlops up -d alpr-retrain` |
 
@@ -81,6 +84,21 @@ docker compose up -d             # application, PostgreSQL, MinIO
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+```
+
+## 🔌 API REST
+
+Point d'entrée des équipements (caméra, barrière) : elle traite un passage avec les mêmes services que l'interface (même moteur, même champion, même base). La gestion (résidents, validation, historique) reste dans le back office Gradio.
+
+| Route | Clé | Entrée | Sortie |
+|---|---|---|---|
+| `GET /health` | non | — | état du service, version du modèle de marque |
+| `POST /v1/access` | `X-API-Key` | `image` (JPEG ou PNG, 5 Mo max), `gate_id` (facultatif) | plaque, décision (`authorized`, `reason` : `AUTHORIZED`, `UNKNOWN_PLATE`, `ACCESS_REVOKED`, `NO_PLATE`), marque, incohérence, version du modèle |
+
+Sécurité : clé obligatoire (l'API refuse de démarrer sans `ALPR_API_KEY`), port publié sur `127.0.0.1` seulement, taille et format d'image contrôlés, erreurs sans détail interne, réponse minimale (ni identité du résident, ni image). Chaque réponse porte un `request_id` (aussi dans l'en-tête `X-Request-ID`) que l'on retrouve dans les logs.
+
+```bash
+curl -H "X-API-Key: $ALPR_API_KEY" -F image=@voiture.jpg -F gate_id=entree-nord http://localhost:8000/v1/access
 ```
 
 ## 🔁 Commandes MLOps
@@ -108,6 +126,7 @@ Les valeurs sont dans `configs/config.yaml` (seuils, buckets, `retention`, `cont
 | `MODEL_BRAND_SOURCE` | `registry` = servir le champion du registre (`local` par défaut) |
 | `S3_ENDPOINT` | MinIO par défaut ; vide = AWS S3 |
 | `RETRAIN_MIN_NEW_IMAGES`, `RETRAIN_INTERVAL_HOURS` | Réentraînement automatique |
+| `ALPR_API_KEY`, `ALPR_API_MAX_IMAGE_MB` | Clé de l'API REST (obligatoire), taille maximale d'une image |
 
 ## 🧪 Tests et CI/CD
 
@@ -115,7 +134,7 @@ Les valeurs sont dans `configs/config.yaml` (seuils, buckets, `retention`, `cont
 python -m pytest tests -q
 ```
 
-`.github/workflows/ci.yml` : à chaque push et pull request, lint, build des images, démarrage de la stack, test HTTP et suite de tests (dont le cycle MLOps complet avec un vrai MLflow). Après une CI verte sur `dev_pieric`, `dev` ou `main`, le job `publish-image` publie `ghcr.io/pf6511/alpr-engine` (étiquettes de branche et `sha-<commit>`).
+`.github/workflows/ci.yml` : à chaque push et pull request, lint, build des images, démarrage de la stack, test HTTP de l'interface, démarrage de l'API (santé, refus sans clé) et suite de tests (dont le cycle MLOps complet avec un vrai MLflow). Après une CI verte sur `dev_pieric`, `dev` ou `main`, le job `publish-image` publie `ghcr.io/pf6511/alpr-engine` (étiquettes de branche et `sha-<commit>`).
 
 ## 📊 Modèles
 

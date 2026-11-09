@@ -236,7 +236,8 @@ def test_brand_rules():
 def test_mismatch_detector_uses_shared_rule():
     from src.models.mismatch_detector import MismatchDetector
 
-    detector = MismatchDetector()
+    # db et storage factices : ce test porte sur la règle, pas sur l'infrastructure
+    detector = MismatchDetector(db=object(), storage=object())
     assert detector.check_mismatch("AB123CD", "citroen", "Citroën") is False
     assert detector.check_mismatch("AB123CD", "renault", "peugeot") is True
 
