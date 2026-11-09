@@ -25,17 +25,26 @@ from src.inference import ALPREngine, InferenceResult, is_brand_mismatch
 logger = logging.getLogger(__name__)
 
 
+# Motifs de la décision
+# +  message destiné à l'affichage.
+REASON_AUTHORIZED = "AUTHORIZED"          # résident connu, accès « oui »
+REASON_UNKNOWN_PLATE = "UNKNOWN_PLATE"    # aucune fiche résident pour cette plaque
+REASON_ACCESS_REVOKED = "ACCESS_REVOKED"  # résident connu, mais accès différent de « oui »
+REASON_NO_PLATE = "NO_PLATE"              # aucune plaque lisible : pas de décision possible
+
+
 @dataclass
 class AccessDecision:
     """Décision d'accès pour une plaque lue."""
 
     authorized: bool
-    message: str
+    message: str                        # pour l'affichage (interface)
+    reason: str = REASON_UNKNOWN_PLATE  # pour l'API
 
 
 @dataclass
 class CaptureOutcome:
-    """Tout ce qu'il faut savoir d'un passage, pour l'afficher ou l'exposer."""
+    """Rassemble toutes les infos d'un passage, pour l'afficher ou l'exposer."""
 
     image_bgr: np.ndarray
     result: InferenceResult
@@ -43,21 +52,22 @@ class CaptureOutcome:
     resident: Optional[Dict[str, Any]] = None
     declared_brand: Optional[str] = None
     access: Optional[AccessDecision] = None  # None si aucune plaque lisible
-    mismatch: bool = False                   # marque prédite ≠ marque déclarée
+    mismatch: bool = False                   # marque prédite <> marque déclarée
     mismatch_image_key: Optional[str] = None # image du véhicule conservée pour validation
-    failure_recorded: bool = False           # ajouté à la galerie d'erreurs
+    failure_recorded: bool = False           # ajoutée à la galerie d'erreurs
 
 
 def decide_access(plate_text: str, resident: Optional[Dict[str, Any]]) -> AccessDecision:
     """Règle d'accès : la plaque appartient à un résident dont l'accès est « oui »."""
-    authorized = bool(resident) and str(resident.get("acces", "")).strip().lower() == "oui"
-    if authorized:
-        return AccessDecision(True, f"✅ ACCESS GRANTED: {plate_text}")
-    return AccessDecision(False, f"⛔ ACCESS DENIED: {plate_text}")
+    if not resident:
+        return AccessDecision(False, f"⛔ ACCESS DENIED: {plate_text}", REASON_UNKNOWN_PLATE)
+    if str(resident.get("acces", "")).strip().lower() == "oui":
+        return AccessDecision(True, f"✅ ACCESS GRANTED: {plate_text}", REASON_AUTHORIZED)
+    return AccessDecision(False, f"⛔ ACCESS DENIED: {plate_text}", REASON_ACCESS_REVOKED)
 
 
 class ALPRService:
-    """Traitement complet d'un passage de véhicule."""
+    """Chaîne de Traitements complete d'un passage de véhicule."""
 
     def __init__(self, engine: ALPREngine, db, mismatch_detector=None, error_gallery=None):
         self.engine = engine
