@@ -77,6 +77,39 @@ services:
       start_period: 60s
 
   # ─────────────────────────────────────────────────────────────────────────────
+  # API REST des équipements (caméra, barrière) : traitement d'un passage
+  # Même image et mêmes services que l'interface (build_services), autre point
+  # d'entrée : src/api/main.py. Exige ALPR_API_KEY dans docker/.env (sinon refus
+  # de démarrer). Port publié sur 127.0.0.1 seulement : pas d'accès depuis le réseau.
+  # Profil « api » :
+  #   docker compose --profile api up -d alpr-api      → http://localhost:8000/docs
+  # ─────────────────────────────────────────────────────────────────────────────
+  alpr-api:
+    <<: *alpr-common
+    container_name: alpr-api
+    profiles: ["api", "full"]
+    # Au plus 3 relances : une erreur de configuration (clé absente...) arrête le
+    # conteneur avec son message, au lieu de le relancer sans fin.
+    restart: on-failure:3
+    # python -m : l'image de production copie les bibliothèques, pas les scripts de /usr/local/bin
+    command: ["python", "-m", "uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      # La base est indispensable (résidents, journal) : attendre qu'elle soit prête
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_started
+        required: false
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ─────────────────────────────────────────────────────────────────────────────
   # Réentraînement automatique du classificateur de marque
   # Un cycle toutes les continuous_training.interval_hours (configs/config.yaml) :
   # nouvelles images validées ? → entraînement → promotion. L'application charge

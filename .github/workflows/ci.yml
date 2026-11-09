@@ -76,6 +76,31 @@ jobs:
           docker compose -f docker/docker-compose.yml logs alpr-engine --tail 50
           exit 1
 
+      - name: Démarrer l'API
+        run: |
+          # Clé aléatoire, propre à ce run (jamais affichée) : sans clé, l'API refuse de démarrer
+          echo "ALPR_API_KEY=ci-$(openssl rand -hex 16)" >> docker/.env
+          docker compose -f docker/docker-compose.yml --profile api up -d alpr-api
+
+      - name: Vérifier l'API (santé, puis refus sans clé)
+        run: |
+          for i in {1..30}; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health || true)
+            if [ "$STATUS" = "200" ]; then
+              echo "API is up! (HTTP $STATUS)"
+              break
+            fi
+            echo "  attempt $i/30 — HTTP $STATUS"
+            sleep 5
+          done
+          if [ "$STATUS" != "200" ]; then
+            docker compose -f docker/docker-compose.yml --profile api logs alpr-api --tail 50
+            exit 1
+          fi
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://localhost:8000/v1/access)
+          echo "POST /v1/access sans clé → HTTP $STATUS"
+          test "$STATUS" = "401"
+
       - name: Lancer les tests
         env:
           PYTHONPATH: ${{ github.workspace }}
@@ -84,7 +109,7 @@ jobs:
 
       - name: Stop containers
         if: always()
-        run: docker compose -f docker/docker-compose.yml down
+        run: docker compose -f docker/docker-compose.yml --profile api down
 
   # ───────────────────────────────────────────────────────────────────────────
   # Déploiement continu : publication de l'image validée (push sur dev_pieric, dev ou main)
