@@ -20,7 +20,6 @@ fraction de GPU par réplique — à laisser à 0 sur une machine sans GPU).
 from __future__ import annotations
 
 import asyncio
-import base64
 import logging
 import os
 import sys
@@ -30,13 +29,13 @@ from pathlib import Path
 from typing import Any, Dict
 
 import cv2
-import numpy as np
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from configs.settings import get_settings  # noqa: E402
 from src.inference import ALPREngine, is_brand_mismatch  # noqa: E402
+from src.inference.images import decode_image, encode_image  # noqa: E402 - conversions communes
 from src.inference.rendering import annotate  # noqa: E402
 
 try:
@@ -47,29 +46,6 @@ except ImportError:
     RAY_AVAILABLE = False
 
 logger = logging.getLogger("ray.serve")
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# CONVERSIONS
-# ═══════════════════════════════════════════════════════════════════════════════
-
-def decode_image(image_data: str) -> np.ndarray:
-    """Image base64 (éventuellement préfixée « data:...;base64, ») → numpy BGR."""
-    if "base64," in image_data:
-        image_data = image_data.split("base64,", 1)[1]
-    buffer = np.frombuffer(base64.b64decode(image_data), np.uint8)
-    image = cv2.imdecode(buffer, cv2.IMREAD_COLOR)
-    if image is None:
-        raise ValueError("Image illisible")
-    return image
-
-
-def encode_image(image_bgr: np.ndarray) -> str:
-    """Image numpy BGR → JPEG base64."""
-    ok, buffer = cv2.imencode(".jpg", image_bgr, [cv2.IMWRITE_JPEG_QUALITY, 90])
-    if not ok:
-        raise ValueError("Encodage JPEG impossible")
-    return base64.b64encode(buffer).decode("utf-8")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
