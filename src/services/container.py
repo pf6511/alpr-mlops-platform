@@ -86,7 +86,7 @@ def build_services(settings: Optional[Settings] = None,
                    db=None) -> Services:
     """Assemble l'application. `engine` et `db` peuvent être fournis (tests)."""
     settings = settings or get_settings()
-    db = db if db is not None else DatabaseManager()
+    db = db if db is not None else DatabaseManager(settings=settings)
     registry, champion = _registry_and_champion(settings) if engine is None else (None, None)
     engine = engine or ALPREngine(settings=settings, brand_bundle=champion)
     storage = _optional_storage()
