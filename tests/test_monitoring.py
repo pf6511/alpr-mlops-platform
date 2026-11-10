@@ -18,7 +18,7 @@ from src.monitoring import report as monitoring
 NOW = datetime(2026, 11, 10, 12, 0)
 SETTINGS = MonitoringSettings(current_days=7, reference_days=30, min_passages=5,
                               max_brand_error_rate=0.20, min_brand_confidence=0.70,
-                              max_duration_ms_p95=3000)
+                              max_duration_ms_p95=3000, max_drift_share=0.5)
 
 
 def passage(days_ago, **overrides):
@@ -165,4 +165,24 @@ def test_drift_report_with_evidently():
     current = [passage(1 + i % 5, luminosite=40.0 + i % 5, marque_predite="audi") for i in range(40)]
     result = monitoring.run(now=NOW, db=FakeDB(reference + current), settings=SETTINGS)
     assert result["rapport_html"] and monitoring.Path(result["rapport_html"]).exists()
-    assert result["derive"]["part_colonnes_en_derive"] > 0      # luminosité et marque ont changé
+    share = result["derive"]["part_colonnes_en_derive"]
+    assert share > 0                                            # luminosité et marque ont changé
+    assert (result["statut"] == "alerte") == (share >= SETTINGS.max_drift_share)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# DONNÉES DE DÉMONSTRATION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def test_demo_data_triggers_alerts():
+    """Les passages fictifs sont marqués « demo » et font réagir les seuils."""
+    from src.monitoring import demo_data
+
+    rows = demo_data.generate(NOW)
+    assert all(r["source"] == "demo" and r["plaque"].startswith("DEMO") for r in rows)
+    assert all(r["validation_status"] == "validated" for r in rows if r["mismatch"])   # rien « en attente »
+
+    reference, current = monitoring.split_periods(frame(rows), NOW, SETTINGS)
+    assert len(reference) == 150 and len(current) == 60
+    assert monitoring.check_thresholds(monitoring.compute_indicators(current), SETTINGS)
+    assert monitoring.check_thresholds(monitoring.compute_indicators(reference), SETTINGS) == []

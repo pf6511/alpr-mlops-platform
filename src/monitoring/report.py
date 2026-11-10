@@ -218,6 +218,9 @@ def run(now: Optional[datetime] = None, with_drift: bool = True, db=None,
             share = drift_report(reference, current, html_path)
             report["derive"] = {"part_colonnes_en_derive": share}
             report["rapport_html"] = str(html_path)
+            if share is not None and share >= settings.max_drift_share:
+                alerts.append(f"dérive des données : {share:.0%} des colonnes ≥ {settings.max_drift_share:.0%}"
+                              f" (voir le rapport Evidently)")
         except Exception as exc:  # noqa: BLE001 - le rapport de dérive ne doit pas bloquer les indicateurs
             logger.error("Rapport de dérive impossible : %s", exc)
             report["derive"] = {"erreur": str(exc)}

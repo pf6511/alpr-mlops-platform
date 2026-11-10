@@ -213,8 +213,8 @@ def test_result_line_is_machine_readable(capsys):
     assert json.loads(last[len(continuous.RESULT_PREFIX):])["reason"] == "é"
 
 
-def test_airflow_dag_is_valid():
-    """Le DAG se charge et enchaîne check_trigger → retrain_cycle → report (si Airflow est installé)."""
+def test_airflow_dag_is_valid(monkeypatch):
+    """Les DAG se chargent et enchaînent leurs tâches dans l'ordre (si Airflow est installé)."""
     import pytest
 
     # « airflow.models » et pas « airflow » : le dossier airflow/ du dépôt est importable sous ce nom
@@ -223,7 +223,11 @@ def test_airflow_dag_is_valid():
 
     from airflow.models import DagBag
 
-    bag = DagBag(dag_folder=str(Path(__file__).parents[1] / "airflow" / "dags"), include_examples=False)
+    dags_folder = str(Path(__file__).parents[1] / "airflow" / "dags")
+    monkeypatch.syspath_prepend(dags_folder)      # comme Airflow : alpr_common importable
+    bag = DagBag(dag_folder=dags_folder, include_examples=False)
     assert bag.import_errors == {}
     dag = bag.get_dag("alpr_brand_retraining")
     assert [t.task_id for t in dag.topological_sort()] == ["check_trigger", "retrain_cycle", "report"]
+    dag = bag.get_dag("alpr_monitoring")
+    assert [t.task_id for t in dag.topological_sort()] == ["monitoring_report", "check_alerts"]

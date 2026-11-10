@@ -154,6 +154,7 @@ class MonitoringSettings:
     max_brand_error_rate: float = 0.20  # erreurs du modèle de marque (validations de l'opérateur)
     min_brand_confidence: float = 0.70  # confiance moyenne minimale du modèle de marque
     max_duration_ms_p95: int = 3000     # 95 % des passages traités en moins de N ms
+    max_drift_share: float = 0.5        # alerte si au moins cette part des colonnes dérive (Evidently)
 
 
 @dataclass
@@ -347,6 +348,7 @@ def _create_settings_from_config(config: Dict) -> Settings:
         max_brand_error_rate=float(mon_config.get('max_brand_error_rate', mon_defaults.max_brand_error_rate)),
         min_brand_confidence=float(mon_config.get('min_brand_confidence', mon_defaults.min_brand_confidence)),
         max_duration_ms_p95=int(mon_config.get('max_duration_ms_p95', mon_defaults.max_duration_ms_p95)),
+        max_drift_share=float(mon_config.get('max_drift_share', mon_defaults.max_drift_share)),
     )
 
     return Settings(

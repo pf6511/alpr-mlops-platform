@@ -79,6 +79,7 @@ monitoring:
   max_brand_error_rate: 0.20  # au plus 20 % d'erreurs du modèle de marque (validations)
   min_brand_confidence: 0.70  # confiance moyenne du modèle de marque d'au moins 0,70
   max_duration_ms_p95: 3000   # 95 % des passages traités en moins de 3 s
+  max_drift_share: 0.5        # dérive des données si au moins la moitié des colonnes dérive
 
 # ───────────────────────────────────────────────────────────────────────────────
 # MLFLOW
