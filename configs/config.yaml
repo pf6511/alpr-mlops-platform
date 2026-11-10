@@ -69,6 +69,18 @@ continuous_training:
   champion_refresh_minutes: 10   # l'application recharge le nouveau champion (0 = jamais)
 
 # ───────────────────────────────────────────────────────────────────────────────
+# MONITORING (src/monitoring/report.py)
+# Seuils = critères d'acceptation du cahier des charges
+# ───────────────────────────────────────────────────────────────────────────────
+monitoring:
+  current_days: 7             # période surveillée : les 7 derniers jours
+  reference_days: 30          # comparée aux 30 jours précédents
+  min_passages: 30            # minimum de passages par période pour le rapport de dérive
+  max_brand_error_rate: 0.20  # au plus 20 % d'erreurs du modèle de marque (validations)
+  min_brand_confidence: 0.70  # confiance moyenne du modèle de marque d'au moins 0,70
+  max_duration_ms_p95: 3000   # 95 % des passages traités en moins de 3 s
+
+# ───────────────────────────────────────────────────────────────────────────────
 # MLFLOW
 # ───────────────────────────────────────────────────────────────────────────────
 mlflow:

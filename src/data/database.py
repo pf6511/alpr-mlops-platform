@@ -208,6 +208,7 @@ class DatabaseManager:
             cursor.execute(logs_sql)
 
         self._migrate_logs_columns()
+        self._create_monitoring_view()
         print("✅ Tables initialisées")
 
     # Colonnes ajoutées à `logs` après sa création initiale : boucle de validation
@@ -244,6 +245,24 @@ class DatabaseManager:
                 for column, (_, sqlite_type) in columns.items():
                     if column not in existing:
                         cursor.execute(f"ALTER TABLE logs ADD COLUMN {column} {sqlite_type} DEFAULT NULL")
+
+    # Vue lue par le monitoring : le journal des passages SANS les plaques (minimisation),
+    # dans un schéma dédié. Le monitoring ne dépend que de cette vue, pas de la table.
+    MONITORING_VIEW_SQL = """
+        CREATE SCHEMA IF NOT EXISTS monitoring;
+        CREATE OR REPLACE VIEW monitoring.passages AS
+        SELECT id, timestamp, source, motif, resultat,
+               marque_predite, marque_confiance, mismatch,
+               validation_status, validated_label,
+               ocr_confiance, luminosite, nettete, duree_ms, modele_marque
+        FROM public.logs;
+    """
+
+    def _create_monitoring_view(self):
+        if self.mode != "postgres":      # schémas PostgreSQL uniquement (SQLite : développement)
+            return
+        with self.get_cursor(commit=True) as cursor:
+            cursor.execute(self.MONITORING_VIEW_SQL)
 
     # (le reste de ton code ne change pas)
     

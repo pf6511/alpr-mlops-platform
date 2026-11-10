@@ -140,6 +140,23 @@ class ContinuousTrainingSettings:
 
 
 @dataclass
+class MonitoringSettings:
+    """
+    Monitoring de la solution en production (src/monitoring/report.py).
+
+    Compare la période récente (`current_days`) à une période de référence
+    (les `reference_days` précédents) et contrôle les seuils issus des critères
+    d'acceptation du cahier des charges.
+    """
+    current_days: int = 7               # période surveillée : les N derniers jours
+    reference_days: int = 30            # période de référence : les N jours d'avant
+    min_passages: int = 30              # minimum de passages par période pour le rapport de dérive
+    max_brand_error_rate: float = 0.20  # erreurs du modèle de marque (validations de l'opérateur)
+    min_brand_confidence: float = 0.70  # confiance moyenne minimale du modèle de marque
+    max_duration_ms_p95: int = 3000     # 95 % des passages traités en moins de N ms
+
+
+@dataclass
 class GradioSettings:
     """Configuration Gradio."""
     server_name: str = "0.0.0.0"
@@ -161,6 +178,7 @@ class Settings:
     gradio: GradioSettings = field(default_factory=GradioSettings)
     retention: RetentionSettings = field(default_factory=RetentionSettings)
     continuous: ContinuousTrainingSettings = field(default_factory=ContinuousTrainingSettings)
+    monitoring: MonitoringSettings = field(default_factory=MonitoringSettings)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -319,6 +337,18 @@ def _create_settings_from_config(config: Dict) -> Settings:
         champion_refresh_minutes=float(os.environ.get('CHAMPION_REFRESH_MINUTES', ct_config.get('champion_refresh_minutes', defaults.champion_refresh_minutes))),
     )
 
+    # Monitoring
+    mon_config = config.get('monitoring', {})
+    mon_defaults = MonitoringSettings()
+    monitoring = MonitoringSettings(
+        current_days=int(mon_config.get('current_days', mon_defaults.current_days)),
+        reference_days=int(mon_config.get('reference_days', mon_defaults.reference_days)),
+        min_passages=int(mon_config.get('min_passages', mon_defaults.min_passages)),
+        max_brand_error_rate=float(mon_config.get('max_brand_error_rate', mon_defaults.max_brand_error_rate)),
+        min_brand_confidence=float(mon_config.get('min_brand_confidence', mon_defaults.min_brand_confidence)),
+        max_duration_ms_p95=int(mon_config.get('max_duration_ms_p95', mon_defaults.max_duration_ms_p95)),
+    )
+
     return Settings(
         env=os.environ.get('ENV', config.get('env', 'development')),
         database=database,
@@ -330,6 +360,7 @@ def _create_settings_from_config(config: Dict) -> Settings:
         gradio=gradio,
         retention=retention,
         continuous=continuous,
+        monitoring=monitoring,
     )
 
 
