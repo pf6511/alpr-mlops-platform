@@ -14,7 +14,7 @@ from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from configs.settings import get_settings
+from configs.settings import Settings, get_settings
 
 # PostgreSQL support (optionnel)
 try:
@@ -28,8 +28,8 @@ except ImportError:
 
 class DatabaseManager:
     
-    def __init__(self, db_path: Optional[str] = None):
-        self.settings = get_settings()
+    def __init__(self, db_path: Optional[str] = None,settings: Optional[Settings] = None):
+        self.settings = settings or get_settings()
         self.db_config = self.settings.database
 
         # Support DATABASE_URL direct (NeonDB, Heroku, etc.)
