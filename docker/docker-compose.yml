@@ -82,7 +82,7 @@ services:
   # d'entrée : src/api/main.py. Exige ALPR_API_KEY dans docker/.env (sinon refus
   # de démarrer). Port publié sur 127.0.0.1 seulement : pas d'accès depuis le réseau.
   # Profil « api » :
-  #   docker compose --profile api up -d alpr-api      → http://localhost:8000/docs
+  #   docker compose --profile api up -d alpr-api      → http://127.0.0.1:8000/docs
   # ─────────────────────────────────────────────────────────────────────────────
   alpr-api:
     <<: *alpr-common
@@ -221,7 +221,7 @@ services:
     image: apache/airflow:2.7.3-python3.10
     container_name: alpr-airflow
     restart: unless-stopped
-    # Orchestration du réentraînement (DAG airflow/dags/alpr_brand_retraining.py) :
+    # Orchestration : réentraînement (alpr_brand_retraining) et monitoring (alpr_monitoring) :
     #   docker compose --profile airflow up -d airflow      → http://localhost:8080
     profiles:
       - airflow

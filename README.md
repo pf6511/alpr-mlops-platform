@@ -22,6 +22,7 @@ git clone -b dev_pieric https://github.com/pf6511/alpr-mlops-platform
 | Apprentissage actif | Image de l'incohérence conservée, validée par l'opérateur, ajoutée au jeu d'entraînement `labeled/<marque>/` |
 | MLOps | Registre MLflow (alias `champion` / `challenger`), paquets de modèle sans code, manifeste de lignage, règle de promotion explicite |
 | Réentraînement automatique | Cycle déclenché par les données (≥ 20 nouvelles images validées), orchestré par Airflow ; l'application charge le nouveau champion sans redémarrer |
+| Monitoring | Chaque passage est journalisé avec ses mesures ; rapport quotidien (Airflow) : indicateurs, seuils du cahier des charges, dérive des données (Evidently) ; alerte si un seuil est dépassé |
 | RGPD | Image conservée seulement en cas d'incohérence, supprimée à 30 jours par le stockage (cycle de vie S3) |
 | CI/CD | GitHub Actions : tests à chaque push et pull request, puis publication de l'image sur GHCR |
 
@@ -53,10 +54,11 @@ alpr-mlops-platform/
 │   ├── data/                  # Base, stockage S3, rétention RGPD
 │   ├── models/                # Détecteur d'incohérences, façade historique
 │   ├── mlops/                 # Registre, bootstrap, promotion, cycle automatique
+│   ├── monitoring/            # Rapport de monitoring (indicateurs, seuils, Evidently)
 │   ├── training/              # Jeu de données, entraînement, métriques
 │   └── serving/               # API Ray Serve (option de montée en charge)
 ├── pipelines/                 # CLI d'inférence
-├── airflow/dags/              # DAG alpr_brand_retraining
+├── airflow/dags/              # DAG alpr_brand_retraining et alpr_monitoring
 ├── docker/                    # Dockerfile, docker-compose.yml, surcharge de production
 ├── migrations/                # Schéma SQL
 ├── models/                    # Poids locaux (détecteur de plaques, repli du modèle de marque)
@@ -75,8 +77,8 @@ docker compose up -d             # application, PostgreSQL, MinIO
 |---|---|---|
 | Application | http://localhost:7860 | `docker compose up -d` |
 | MinIO | http://localhost:9001 | `docker compose up -d` |
-| API REST (documentation interactive) | http://localhost:8000/docs | `docker compose --profile api up -d alpr-api` (exige `ALPR_API_KEY`) |
-| Airflow | http://localhost:8080 | `docker compose --profile airflow up -d airflow` |
+| API REST (documentation interactive) | http://127.0.0.1:8000/docs | `docker compose --profile api up -d alpr-api` (exige `ALPR_API_KEY`) |
+| Airflow (`admin` / `AIRFLOW_PASSWORD`, `admin` par défaut) | http://localhost:8080 | `docker compose --profile airflow up -d airflow` |
 | Réentraînement planifié (sans Airflow) | — | `docker compose --profile mlops up -d alpr-retrain` |
 
 **Production** : l'image publiée par la CI/CD remplace le build local et le code n'est plus monté.
@@ -98,8 +100,32 @@ Point d'entrée des équipements (caméra, barrière) : elle traite un passage a
 Sécurité : clé obligatoire (l'API refuse de démarrer sans `ALPR_API_KEY`), port publié sur `127.0.0.1` seulement, taille et format d'image contrôlés, erreurs sans détail interne, réponse minimale (ni identité du résident, ni image). Chaque réponse porte un `request_id` (aussi dans l'en-tête `X-Request-ID`) que l'on retrouve dans les logs.
 
 ```bash
-curl -H "X-API-Key: $ALPR_API_KEY" -F image=@voiture.jpg -F gate_id=entree-nord http://localhost:8000/v1/access
+curl -H "X-API-Key: $ALPR_API_KEY" -F image=@voiture.jpg -F gate_id=entree-nord http://127.0.0.1:8000/v1/access
 ```
+
+L'API écoute sur `127.0.0.1` uniquement : sous Windows, utiliser `127.0.0.1` plutôt que `localhost` (qui peut désigner l'adresse IPv6 `::1`).
+
+## 📈 Monitoring
+
+Chaque passage (interface ou API) est journalisé avec ses mesures : motif de la décision, confiances, luminosité et netteté de l'image, temps de traitement, source, version du modèle. Le monitoring lit la vue `monitoring.passages` (le journal **sans les plaques**) et compare les 7 derniers jours aux 30 précédents.
+
+| Niveau | Indicateurs | Seuil (`config.yaml`, section `monitoring`) |
+|---|---|---|
+| Service | passages, part des refus, temps de traitement (p95) | p95 ≤ 3 000 ms |
+| Données | luminosité, netteté, distribution des marques prédites ; dérive (Evidently, `DataDriftPreset`) | moins de 50 % des colonnes en dérive |
+| Modèle | confiances de la marque et de l'OCR, part des incohérences, **taux d'erreur réel** (validations de l'opérateur) | erreur ≤ 20 %, confiance ≥ 0,70 |
+
+Le DAG `alpr_monitoring` (quotidien) exécute `monitoring_report` puis `check_alerts`, qui échoue (rouge) si un seuil est dépassé. Chaque exécution ajoute une ligne à `data/monitoring/history.jsonl` et, avec assez de passages, produit un rapport HTML Evidently :
+
+```bash
+docker exec -w /app alpr-engine python -m src.monitoring.report      # rapport à la demande
+docker exec alpr-engine ls data/monitoring                            # rapports produits
+docker cp alpr-engine:/app/data/monitoring/<rapport>.html .           # le copier pour l'ouvrir
+```
+
+Démonstration : `python -m src.monitoring.demo_data` insère des passages fictifs (`source = 'demo'`) qui simulent une dégradation (images sombres, confiance en baisse, erreurs) ; `--delete` les supprime.
+
+Limite : le taux d'erreur ne porte que sur les incohérences validées par l'opérateur (indicateur partiel).
 
 ## 🔁 Commandes MLOps
 
@@ -112,11 +138,13 @@ curl -H "X-API-Key: $ALPR_API_KEY" -F image=@voiture.jpg -F gate_id=entree-nord 
 | `python -m src.mlops.promote` | Challenger contre champion sur le même jeu de test |
 | `python -m src.mlops.continuous [--check \| --force \| --loop]` | Cycle complet : décision, entraînement, promotion |
 | `python -m src.data.retention [--apply]` | Affiche ou applique la conservation de 30 jours |
+| `python -m src.monitoring.report [--no-drift]` | Rapport de monitoring : indicateurs, seuils, dérive (Evidently) |
+| `python -m src.monitoring.demo_data [--delete]` | Insère ou supprime les passages de démonstration |
 | `python -m pipelines.inference_pipeline <image>` | Inférence en ligne de commande |
 
 ## ⚙️ Configuration
 
-Les valeurs sont dans `configs/config.yaml` (seuils, buckets, `retention`, `continuous_training`, `mlflow`) et se surchargent par variables d'environnement. Principales variables (`docker/env.cloud.example`) :
+Les valeurs sont dans `configs/config.yaml` (seuils, buckets, `retention`, `continuous_training`, `monitoring`, `mlflow`) et se surchargent par variables d'environnement. Principales variables (`docker/env.cloud.example`) :
 
 | Variable | Rôle |
 |---|---|

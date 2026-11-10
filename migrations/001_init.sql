@@ -61,7 +61,16 @@ CREATE TABLE IF NOT EXISTS logs (
     validation_status VARCHAR(10) DEFAULT NULL,   -- NULL = en attente, 'validated' ou 'rejected'
     validated_label VARCHAR(50) DEFAULT NULL,     -- marque retenue par l'opérateur
     validated_at TIMESTAMP DEFAULT NULL,
-    
+
+    -- Monitoring : mesures du passage (src/monitoring)
+    motif VARCHAR(20) DEFAULT NULL,               -- AUTHORIZED, UNKNOWN_PLATE, ACCESS_REVOKED
+    ocr_confiance REAL DEFAULT NULL,              -- confiance de la lecture de plaque
+    luminosite REAL DEFAULT NULL,                 -- luminosité moyenne de l'image (0-255)
+    nettete REAL DEFAULT NULL,                    -- variance du laplacien (bas = flou)
+    duree_ms INTEGER DEFAULT NULL,                -- temps d'inférence
+    source VARCHAR(50) DEFAULT NULL,              -- interface, api:<borne>
+    modele_marque VARCHAR(100) DEFAULT NULL,      -- version du modèle de marque utilisé
+
     -- Timestamp
     timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

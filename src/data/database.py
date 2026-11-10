@@ -208,6 +208,7 @@ class DatabaseManager:
             cursor.execute(logs_sql)
 
         self._migrate_logs_columns()
+        self._create_monitoring_view()
         print("✅ Tables initialisées")
 
     # Colonnes ajoutées à `logs` après sa création initiale : boucle de validation
@@ -220,17 +221,48 @@ class DatabaseManager:
         "validated_at": ("TIMESTAMP", "TEXT"),
     }
 
+    # Colonnes de monitoring : ce que le moteur mesure à chaque passage et qui sert
+    # à surveiller le service, les données (dérive) et le modèle (src/monitoring).
+    LOGS_MONITORING_COLUMNS = {
+        "motif": ("VARCHAR(20)", "TEXT"),            # AUTHORIZED, UNKNOWN_PLATE, ACCESS_REVOKED
+        "ocr_confiance": ("REAL", "REAL"),           # confiance de la lecture de plaque
+        "luminosite": ("REAL", "REAL"),              # luminosité moyenne de l'image (0-255)
+        "nettete": ("REAL", "REAL"),                 # netteté (variance du laplacien : bas = flou)
+        "duree_ms": ("INTEGER", "INTEGER"),          # temps d'inférence
+        "source": ("VARCHAR(50)", "TEXT"),           # interface, api:<borne>
+        "modele_marque": ("VARCHAR(100)", "TEXT"),   # version du modèle de marque utilisé
+    }
+
     def _migrate_logs_columns(self):
+        columns = {**self.LOGS_VALIDATION_COLUMNS, **self.LOGS_MONITORING_COLUMNS}
         with self.get_cursor(commit=True) as cursor:
             if self.mode == "postgres":
-                for column, (pg_type, _) in self.LOGS_VALIDATION_COLUMNS.items():
+                for column, (pg_type, _) in columns.items():
                     cursor.execute(f"ALTER TABLE logs ADD COLUMN IF NOT EXISTS {column} {pg_type} DEFAULT NULL")
             else:
                 cursor.execute("PRAGMA table_info(logs)")
                 existing = {row[1] for row in cursor.fetchall()}
-                for column, (_, sqlite_type) in self.LOGS_VALIDATION_COLUMNS.items():
+                for column, (_, sqlite_type) in columns.items():
                     if column not in existing:
                         cursor.execute(f"ALTER TABLE logs ADD COLUMN {column} {sqlite_type} DEFAULT NULL")
+
+    # Vue lue par le monitoring : le journal des passages SANS les plaques (minimisation),
+    # dans un schéma dédié. Le monitoring ne dépend que de cette vue, pas de la table.
+    MONITORING_VIEW_SQL = """
+        CREATE SCHEMA IF NOT EXISTS monitoring;
+        CREATE OR REPLACE VIEW monitoring.passages AS
+        SELECT id, timestamp, source, motif, resultat,
+               marque_predite, marque_confiance, mismatch,
+               validation_status, validated_label,
+               ocr_confiance, luminosite, nettete, duree_ms, modele_marque
+        FROM public.logs;
+    """
+
+    def _create_monitoring_view(self):
+        if self.mode != "postgres":      # schémas PostgreSQL uniquement (SQLite : développement)
+            return
+        with self.get_cursor(commit=True) as cursor:
+            cursor.execute(self.MONITORING_VIEW_SQL)
 
     # (le reste de ton code ne change pas)
     
@@ -462,24 +494,28 @@ class DatabaseManager:
     
     def add_log(self, plaque: str, authorized: bool, normalized: str,
                 marque_predite: str = None, marque_confiance: float = None,
-                mismatch: bool = False, image_key: str = None) -> bool:
-        """Ajoute une entrée de log. `image_key` : clé de l'image du véhicule (incohérence)."""
+                mismatch: bool = False, image_key: str = None,
+                monitoring: Optional[Dict] = None) -> bool:
+        """
+        Ajoute une entrée de log. `image_key` : clé de l'image du véhicule (incohérence).
+        `monitoring` : mesures du passage (clés de LOGS_MONITORING_COLUMNS), facultatives.
+        """
         ph = self._placeholder()
         timestamp = datetime.now().isoformat()
         resultat = "autorisé" if authorized else "refusé"
-        
-        sql = f"""
-            INSERT INTO logs (plaque, timestamp, resultat, normalized_plate, marque_predite,
-                              marque_confiance, mismatch, image_key)
-            VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
-        """
-        
+        monitoring = {k: v for k, v in (monitoring or {}).items() if k in self.LOGS_MONITORING_COLUMNS}
+
+        columns = ["plaque", "timestamp", "resultat", "normalized_plate", "marque_predite",
+                   "marque_confiance", "mismatch", "image_key", *monitoring]
+        sql = f"INSERT INTO logs ({', '.join(columns)}) VALUES ({', '.join([ph] * len(columns))})"
+
         try:
             with self.get_cursor(commit=True) as cursor:
                 mismatch_val = mismatch if self.mode == "postgres" else (1 if mismatch else 0)
                 cursor.execute(sql, (
                     plaque, timestamp, resultat, normalized,
-                    marque_predite, marque_confiance, mismatch_val, image_key
+                    marque_predite, marque_confiance, mismatch_val, image_key,
+                    *monitoring.values(),
                 ))
             return True
         except Exception as e:

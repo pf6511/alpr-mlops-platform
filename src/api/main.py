@@ -173,7 +173,7 @@ def create_app(services=None, api_key: Optional[str] = None,
     @app.post("/v1/access", response_model=AccessResponse, dependencies=[Depends(require_api_key)])
     def access(request: Request,
                image: UploadFile = File(..., description="Photo du véhicule (JPEG ou PNG)"),
-               gate_id: str = Form("", description="Identifiant de la borne, ex. entree-nord")):
+               gate_id: str = Form("", max_length=40, description="Identifiant de la borne, ex. entree-nord")):
         start = time.perf_counter()
         svc = request.app.state.services
 
@@ -195,7 +195,7 @@ def create_app(services=None, api_key: Optional[str] = None,
         #    (analyse, résident, décision, cohérence de la marque, journal, image si incohérence)
         # les modèles ne sont pas garantis thread-safe
         with inference_lock:
-            outcome = svc.capture.process(image_bgr)
+            outcome = svc.capture.process(image_bgr, source=f"api:{gate_id or '-'}")
 
         # 3. Réponse minimale (contrat)
         if outcome.access is None:      # aucune plaque lisible : pas de décision possible

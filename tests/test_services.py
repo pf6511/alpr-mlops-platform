@@ -132,6 +132,17 @@ def test_authorized_resident_with_matching_brand():
     assert detector.recorded == [] and gallery.paths == []
 
 
+def test_passage_logs_monitoring_measures():
+    service, db, *_ = make_service({"AB123CD": RESIDENT_OK})
+    service.process(make_image(), source="api:entree-nord")
+
+    measures = db.logs[0]["monitoring"]
+    assert measures["motif"] == REASON_AUTHORIZED
+    assert measures["source"] == "api:entree-nord"
+    assert measures["duree_ms"] >= 0
+    assert measures["luminosite"] is not None and measures["nettete"] is not None
+
+
 def test_brand_mismatch_is_logged_once_and_queued():
     service, db, detector, _, engine = make_service({"AB123CD": RESIDENT_OTHER_BRAND})
     outcome = service.process(make_image())

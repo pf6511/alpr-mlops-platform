@@ -3,42 +3,18 @@ DAG : réentraînement automatique du classificateur de marques.
 
     check_trigger --> retrain_cycle --> report
 
-Commandes exécutées DANS le conteneur alpr-engine via l'API Docker
+Commandes exécutées DANS le conteneur alpr-engine via l'API Docker (alpr_common.run_in_engine)
 """
 
 from __future__ import annotations
 
-import json
-import os
 from datetime import datetime, timedelta
 
 from airflow import DAG
 from airflow.exceptions import AirflowException
 from airflow.operators.python import PythonOperator, ShortCircuitOperator
 
-ENGINE_CONTAINER = os.environ.get("ALPR_ENGINE_CONTAINER", "alpr-engine")
-RESULT_PREFIX = "ALPR_RESULT "          # dernière ligne de sortie de src.mlops.continuous
-
-
-def run_in_engine(*module_args: str) -> dict:
-    """Exécute « python -m <module> <args> » dans le conteneur de l'application et renvoie son résultat."""
-    import docker
-
-    container = docker.from_env().containers.get(ENGINE_CONTAINER)
-    exit_code, (stdout, stderr) = container.exec_run(
-        ["python", "-m", *module_args], workdir="/app", demux=True
-    )
-    out = (stdout or b"").decode("utf-8", "replace")
-    err = (stderr or b"").decode("utf-8", "replace")
-    print(out)
-    ##
-    if err:
-        print(err)                           # logs commande
-
-    results = [line[len(RESULT_PREFIX):] for line in out.splitlines() if line.startswith(RESULT_PREFIX)]
-    if exit_code != 0 or not results:
-        raise AirflowException(f"« {' '.join(module_args)} » en échec (code {exit_code})")
-    return json.loads(results[-1])
+from alpr_common import run_in_engine   # commun aux DAG ALPR (airflow/dags/alpr_common.py)
 
 
 def check_trigger(**context) -> bool:
