@@ -114,6 +114,7 @@ def test_access_authorized_and_logged():
     assert body["access"] == {"authorized": True, "reason": "AUTHORIZED"}
     assert body["brand"]["predicted"] == "renault" and body["mismatch"] is False
     assert len(db.logs) == 1                          # même journalisation que l'interface
+    assert db.logs[0]["monitoring"]["source"] == "api:entree-nord"
     assert "Martin" not in str(body)                  # minimisation : pas d'identité du résident
 
 

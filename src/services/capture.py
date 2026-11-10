@@ -76,7 +76,8 @@ class ALPRService:
         self.error_gallery = error_gallery
 
     def process(self, image_bgr: np.ndarray, conf_threshold: Optional[float] = None,
-                run_brand: bool = True) -> CaptureOutcome:
+                run_brand: bool = True, source: str = "interface") -> CaptureOutcome:
+        """`source` : point d'entrée qui a reçu l'image (interface, api:<borne>), pour le journal."""
         # 1. Analyse de l'image — une seule fois
         result = self.engine.analyze(image_bgr, conf_threshold=conf_threshold, run_branch2=run_brand)
         outcome = CaptureOutcome(image_bgr=image_bgr, result=result)
@@ -105,7 +106,7 @@ class ALPRService:
             outcome.mismatch_image_key = self._record_mismatch(outcome)
 
         # 6. Journal : UNE entrée par passage, reliée à l'image en cas d'incohérence
-        self._log_passage(outcome)
+        self._log_passage(outcome, source)
 
         return outcome
 
@@ -120,8 +121,21 @@ class ALPRService:
             logger.error("Recherche du résident impossible : %s", exc)
             return None
 
-    def _log_passage(self, outcome: CaptureOutcome) -> None:
-        brand = outcome.result.brand
+    def _log_passage(self, outcome: CaptureOutcome, source: str) -> None:
+        result = outcome.result
+        brand = result.brand
+        plate = result.best_plate
+        models = getattr(self.engine, "models", None)
+        # Mesures du passage, pour le monitoring (service, dérive des données, modèle)
+        monitoring = {
+            "motif": outcome.access.reason,
+            "ocr_confiance": plate.ocr_confidence if plate else None,
+            "luminosite": result.conditions.brightness,
+            "nettete": result.conditions.blur_score,
+            "duree_ms": int(result.inference_time_s * 1000),
+            "source": source,
+            "modele_marque": models.sources.get("brand_classifier") if models else None,
+        }
         self.db.add_log(
             plaque=outcome.plate_text,
             authorized=outcome.access.authorized,
@@ -130,6 +144,7 @@ class ALPRService:
             marque_confiance=brand.confidence if brand else None,
             mismatch=outcome.mismatch,
             image_key=outcome.mismatch_image_key,
+            monitoring=monitoring,
         )
 
     def _record_mismatch(self, outcome: CaptureOutcome) -> Optional[str]:
