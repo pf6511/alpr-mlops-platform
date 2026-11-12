@@ -25,7 +25,13 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from configs.settings import Settings, get_settings  # noqa: E402
 from src.inference.loader import read_bundle  # noqa: E402
-from src.mlops.registry import PROMOTION_TAG, BrandModelRegistry  # noqa: E402
+from src.mlops.registry import (  # noqa: E402
+    PROMOTION_REASON_TAG,
+    PROMOTION_STATUS_TAG,
+    STATUS_PROMOTED,
+    STATUS_REJECTED,
+    BrandModelRegistry,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -40,9 +46,9 @@ def decide_promotion(champion: Dict[str, float], challenger: Dict[str, float],
                      min_test_images: int = 20, f1_tolerance: float = 0.0) -> PromotionDecision:
     """
     Règle de promotion :
-      - un jeu de test d'au moins min_test_images images ;
+      - un jeu de test d'au moins `min_test_images` images ;
       - une précision au moins égale à celle du champion ;
-      - un F1 macro qui ne recule pas de plus de f1_tolerance.
+      - un F1 macro qui ne recule pas de plus de `f1_tolerance`.
     """
     n = challenger.get("n", 0)
     if n < min_test_images:
@@ -56,7 +62,7 @@ def decide_promotion(champion: Dict[str, float], challenger: Dict[str, float],
 
 
 def _test_items(manifest: Dict[str, Any], classes, storage, work_dir: Path):
-    """Reconstruit le jeu de test du manifeste; ignore les images devenues introuvables."""
+    """Reconstruit le jeu de test du manifeste ; ignore les images devenues introuvables."""
     items, missing = [], 0
     for i, entry in enumerate(manifest.get("dataset", {}).get("test_set", [])):
         if entry["label"] not in classes:
@@ -73,6 +79,12 @@ def _test_items(manifest: Dict[str, Any], classes, storage, work_dir: Path):
             continue
         items.append((str(path), classes.index(entry["label"])))
     return items, missing
+
+
+def record_decision(registry: BrandModelRegistry, version: str, status: str, reason: str) -> None:
+    """Trace la décision sur la version : statut (promoted / rejected) et raison, dans deux tags."""
+    registry.tag_version(version, PROMOTION_STATUS_TAG, status)
+    registry.tag_version(version, PROMOTION_REASON_TAG, reason)
 
 
 def run_promotion(settings: Optional[Settings] = None, storage=None, registry: Optional[BrandModelRegistry] = None,
@@ -97,7 +109,7 @@ def run_promotion(settings: Optional[Settings] = None, storage=None, registry: O
     champion_state, champion_classes, _ = read_bundle(registry.download(cfg.champion_alias).directory)
     if list(champion_classes) != list(classes):
         reason = "classes différentes entre champion et challenger"
-        registry.tag_version(challenger_ref.version, PROMOTION_TAG, f"rejected: {reason}")
+        record_decision(registry, challenger_ref.version, STATUS_REJECTED, reason)
         return {"promoted": False, "reason": reason}
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -107,11 +119,18 @@ def run_promotion(settings: Optional[Settings] = None, storage=None, registry: O
         champion_m = classification_metrics(trainer.predict(champion_state, classes, items), targets, classes)
 
     decision = decide_promotion(champion_m, challenger_m, min_test_images, f1_tolerance)
-    status = "promoted" if decision.promote else "rejected"
-    registry.tag_version(challenger_ref.version, PROMOTION_TAG, f"{status}: {decision.reason}")
+    status = STATUS_PROMOTED if decision.promote else STATUS_REJECTED
+    record_decision(registry, challenger_ref.version, status, decision.reason)
     if decision.promote:
+        # déplace l'alias "champion" sur le challenger (un alias désigne nune seule version)
         registry.set_alias(cfg.champion_alias, challenger_ref.version)
         if champion_ref is not None:
+            # pose sur l'ancien champion un tag
+            
+            #    Version	Avant	                    Après
+            #    v3	champion	                    aucun alias, tag replaced_by = 5
+            #    v5	challenger, statut pending	    champion et challenger, statut promoted, raison « précision 0,93 ≥ 0,91… »
+            
             registry.tag_version(champion_ref.version, "replaced_by", challenger_ref.version)
 
     return {

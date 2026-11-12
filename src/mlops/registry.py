@@ -30,7 +30,29 @@ ARTIFACT_PATH = "brand_model"
 
 # Tags posés sur les versions
 VALIDATED_IMAGES_TAG = "validated_images"   # images validées utilisées pour l'entraîner
-PROMOTION_TAG = "promotion"                 # décision de promotion (« promoted: … » / « rejected: … »)
+
+# Statut de promotion d'une version : explicite, posé dès l'enregistrement du challenger
+PROMOTION_STATUS_TAG = "promotion_status"
+PROMOTION_REASON_TAG = "promotion_reason"   # raison de la décision, à part du statut
+STATUS_PENDING = "pending"                  # entraîné, pas encore jugé
+STATUS_PROMOTED = "promoted"
+STATUS_REJECTED = "rejected"
+STATUSES_TO_JUDGE = frozenset({STATUS_PENDING})   # un éventuel statut comme « à revoir » serait à rajouter ici
+
+LEGACY_PROMOTION_TAG = "promotion"          # anciennes versions : « promoted: … » / « rejected: … »
+
+
+def promotion_status(tags: Dict[str, str]) -> str:
+    """
+    Statut de promotion d'une version, d'après ses tags. Compatible avec les versions
+    enregistrées avant l'introduction du statut explicite (ancien tag « promotion »).
+    """
+    if PROMOTION_STATUS_TAG in tags:
+        return tags[PROMOTION_STATUS_TAG]
+    legacy = tags.get(LEGACY_PROMOTION_TAG)
+    if legacy:
+        return STATUS_PROMOTED if legacy.startswith(STATUS_PROMOTED) else STATUS_REJECTED
+    return STATUS_PENDING
 
 
 @dataclass
@@ -98,7 +120,6 @@ class BrandModelRegistry:
         return [RegisteredBrandModel(version=str(mv.version), run_id=mv.run_id, source=mv.source,
                                      aliases=list(getattr(mv, "aliases", []) or []),
                                      tags=dict(getattr(mv, "tags", {}) or {})) for mv in found]
-
 
     def download(self, alias: Optional[str] = None) -> Optional[BrandBundleRef]:
         """Télécharge le paquet de la version portant `alias` (champion par défaut), avec cache local.
