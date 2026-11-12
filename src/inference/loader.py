@@ -216,7 +216,8 @@ def classifier_from_state(state_dict, classes: Sequence[str], device: str = "cpu
 def load_brand_classifier(
     path: Optional[Path], default_classes: Sequence[str], device: str = "cpu"
 ) -> Optional[BrandClassifier]:
-    """Charge le classificateur de marque depuis un checkpoint local historique."""
+    """Charge le classificateur de marque depuis un checkpoint local historique.
+        TODO rename load_brand_classifier_from_checkpoint"""
     if path is None:
         return None
     try:
@@ -233,7 +234,8 @@ def load_brand_classifier(
 
 
 def load_brand_bundle(directory: Optional[Path], device: str = "cpu") -> Optional[BrandClassifier]:
-    """Charge le classificateur depuis un paquet du registre (téléchargé localement)."""
+    """Charge le classificateur depuis un paquet du registre (téléchargé localement).
+        TODO RENAME load_brand_classifier_from_bundle """
     if directory is None:
         return None
     try:

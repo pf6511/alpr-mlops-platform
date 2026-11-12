@@ -99,8 +99,14 @@ class BrandModelRegistry:
                                      aliases=list(getattr(mv, "aliases", []) or []),
                                      tags=dict(getattr(mv, "tags", {}) or {})) for mv in found]
 
+
     def download(self, alias: Optional[str] = None) -> Optional[BrandBundleRef]:
-        """Télécharge le paquet de la version portant `alias` (champion par défaut), avec cache local."""
+        """Télécharge le paquet de la version portant `alias` (champion par défaut), avec cache local.
+            Chaque version du modèle est un paquet (bundle de trois fichiers)
+            
+            weights.pt       les poids du réseau
+            classes.json     l'ordre des 22 marques (sortie 0 → audi, …)
+            manifest.json    architecture, métriques, jeu de test (lignage)"""
         alias = alias or self.cfg.champion_alias
         model = self.get(alias)
         if model is None:

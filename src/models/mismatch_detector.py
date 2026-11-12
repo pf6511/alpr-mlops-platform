@@ -68,8 +68,8 @@ class MismatchDetector:
     Détecteur et gestionnaire de mismatches marque.
     
     Workflow:
-    1. Détection: marque_predite ≠ marque_declaree
-    2. Stockage: image → S3, log → DB
+    1. Détection: marque_predite <> marque_declaree
+    2. Stockage: image → S3, log --> DB
     3. File d'attente: pour validation opérateur
     4. Export: vers dataset labellisé pour retraining
     """
@@ -78,8 +78,8 @@ class MismatchDetector:
         """
         Initialise le détecteur de mismatch.
 
-        `db` et `storage` peuvent être fournis par le conteneur de services,
-        pour partager une seule connexion ; à défaut, ils sont créés ici.
+        db et storage peuvent être fournis par le conteneur de services,
+        pour partager une seule connexion; à défaut, ils sont créés ici.
         """
         self.settings = get_settings()
         

@@ -40,9 +40,9 @@ def decide_promotion(champion: Dict[str, float], challenger: Dict[str, float],
                      min_test_images: int = 20, f1_tolerance: float = 0.0) -> PromotionDecision:
     """
     Règle de promotion :
-      - un jeu de test d'au moins `min_test_images` images ;
+      - un jeu de test d'au moins min_test_images images ;
       - une précision au moins égale à celle du champion ;
-      - un F1 macro qui ne recule pas de plus de `f1_tolerance`.
+      - un F1 macro qui ne recule pas de plus de f1_tolerance.
     """
     n = challenger.get("n", 0)
     if n < min_test_images:
@@ -56,7 +56,7 @@ def decide_promotion(champion: Dict[str, float], challenger: Dict[str, float],
 
 
 def _test_items(manifest: Dict[str, Any], classes, storage, work_dir: Path):
-    """Reconstruit le jeu de test du manifeste ; ignore les images devenues introuvables."""
+    """Reconstruit le jeu de test du manifeste; ignore les images devenues introuvables."""
     items, missing = [], 0
     for i, entry in enumerate(manifest.get("dataset", {}).get("test_set", [])):
         if entry["label"] not in classes:

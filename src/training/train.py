@@ -50,6 +50,10 @@ def run_training(settings: Optional[Settings] = None, storage=None, registry: Op
                  base_dir: Optional[Path] = None, max_per_class: Optional[int] = None,
                  test_fraction: float = 0.2, epochs: int = 3, lr: float = 1e-4, batch_size: int = 16,
                  freeze_backbone: bool = True, min_train_images: int = 10) -> Dict[str, Any]:
+    """
+        Pour ajouter un jeu local pour l'entraînement
+        python -m src.training.train --epochs 3 --base-dir /chemin/vmmrdb --max-per-class 50
+    """
     settings = settings or get_settings()
     registry = registry or BrandModelRegistry(settings.mlflow)
     if storage is None:
