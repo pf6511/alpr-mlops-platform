@@ -7,12 +7,12 @@ Réentraînement automatique du classificateur de marque.
     python -m src.mlops.continuous --check    # décision seule : faut-il un cycle ? (DAG Airflow)
 
 Un cycle :
-  0. un challenger attend encore sa promotion (cycle précédent interrompu) ? → promotion
+  0. un challenger attend encore sa promotion (cycle précédent interrompu) ? --> promotion
   1. compte les images validées par les opérateurs (bucket dataset, labeled/<marque>/)
   2. compare au nombre utilisé par le dernier entraînement : c'est le REGISTRE qui
      s'en souvient (tag « validated_images » posé sur chaque version entraînée)
-  3. pas assez de nouvelles images → rien à faire (cycle « skipped »)
-  4. sinon : entraînement (→ challenger), puis promotion (même jeu de test, règle explicite)
+  3. pas assez de nouvelles images --> rien à faire (cycle « skipped »)
+  4. sinon : entraînement (--> challenger), puis promotion (même jeu de test, règle explicite)
   5. rapport journalisé (data/retrain_history.jsonl), et la décision est tracée dans MLflow
 
 Un cycle est idempotent : relancé sans nouvelles images, il ne fait rien. Un verrou
@@ -162,7 +162,7 @@ def run_cycle(settings: Optional[Settings] = None, storage=None, registry: Optio
         report["trigger"] = {"reason": "challenger en attente de promotion"}
         return _promote(report, settings, storage, registry, promote_fn)
 
-    # 1-3. Faut-il réentraîner ?
+    # 1-3. Faut-il réentraîner ? => PAS de challenger en attente (sinon cas traité ci-dessus)
     decision = decide_trigger(count_validated(storage, settings.models.brand_classes),
                               last_trained_count(registry), cfg.min_new_images, force)
     report["trigger"] = asdict(decision) | {"new_images": decision.new_images}
@@ -170,7 +170,7 @@ def run_cycle(settings: Optional[Settings] = None, storage=None, registry: Optio
         report["status"] = "skipped"
         return _finish(report)
 
-    # 4. Entraînement → challenger
+    # 4. Entraînement → challenger (donc si challenger existant il est « promoted » ou « rejected »)
     try:
         report["training"] = train_fn(settings, storage, registry, epochs=cfg.epochs,
                                       min_train_images=cfg.min_train_images)

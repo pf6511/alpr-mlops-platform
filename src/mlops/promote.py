@@ -122,8 +122,15 @@ def run_promotion(settings: Optional[Settings] = None, storage=None, registry: O
     status = STATUS_PROMOTED if decision.promote else STATUS_REJECTED
     record_decision(registry, challenger_ref.version, status, decision.reason)
     if decision.promote:
+        # déplace l'alias "champion" sur le challenger (un alias désigne nune seule version)
         registry.set_alias(cfg.champion_alias, challenger_ref.version)
         if champion_ref is not None:
+            # pose sur l'ancien champion un tag
+            
+            #    Version	Avant	                    Après
+            #    v3	champion	                    aucun alias, tag replaced_by = 5
+            #    v5	challenger, statut pending	    champion et challenger, statut promoted, raison « précision 0,93 ≥ 0,91… »
+            
             registry.tag_version(champion_ref.version, "replaced_by", challenger_ref.version)
 
     return {

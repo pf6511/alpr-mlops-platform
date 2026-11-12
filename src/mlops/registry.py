@@ -37,7 +37,7 @@ PROMOTION_REASON_TAG = "promotion_reason"   # raison de la décision, à part du
 STATUS_PENDING = "pending"                  # entraîné, pas encore jugé
 STATUS_PROMOTED = "promoted"
 STATUS_REJECTED = "rejected"
-STATUSES_TO_JUDGE = frozenset({STATUS_PENDING})   # un futur statut « à revoir » s'ajouterait ici
+STATUSES_TO_JUDGE = frozenset({STATUS_PENDING})   # un éventuel statut comme « à revoir » serait à rajouter ici
 
 LEGACY_PROMOTION_TAG = "promotion"          # anciennes versions : « promoted: … » / « rejected: … »
 
