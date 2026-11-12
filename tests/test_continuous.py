@@ -10,7 +10,16 @@ from types import SimpleNamespace
 
 from configs.settings import get_settings
 from src.mlops import continuous
-from src.mlops.registry import PROMOTION_TAG, VALIDATED_IMAGES_TAG, RegisteredBrandModel
+from src.mlops.registry import (
+    LEGACY_PROMOTION_TAG,
+    PROMOTION_STATUS_TAG,
+    STATUS_PENDING,
+    STATUS_PROMOTED,
+    STATUS_REJECTED,
+    VALIDATED_IMAGES_TAG,
+    RegisteredBrandModel,
+    promotion_status,
+)
 
 
 class FakeStorage:
@@ -50,8 +59,8 @@ def settings(min_new_images=5):
 def fake_train(calls, registry, n_validated):
     def train(settings, storage, reg, **kwargs):
         calls.append(("train", kwargs))
-        version = registry.add(tags={"origin": "training", VALIDATED_IMAGES_TAG: str(n_validated)},
-                               alias="challenger")
+        version = registry.add(tags={"origin": "training", VALIDATED_IMAGES_TAG: str(n_validated),
+                                     PROMOTION_STATUS_TAG: STATUS_PENDING}, alias="challenger")
         return {"version": version.version}
     return train
 
@@ -60,7 +69,7 @@ def fake_promote(calls, registry, promote=True):
     def promote_fn(settings, storage, reg, min_test_images):
         calls.append(("promote", min_test_images))
         challenger = registry.get("challenger")
-        challenger.tags[PROMOTION_TAG] = "promoted" if promote else "rejected"
+        challenger.tags[PROMOTION_STATUS_TAG] = STATUS_PROMOTED if promote else STATUS_REJECTED
         if promote:
             registry.aliases["champion"] = challenger.version
         return {"promoted": promote, "reason": "règle", "challenger_version": challenger.version}
@@ -231,3 +240,29 @@ def test_airflow_dag_is_valid(monkeypatch):
     assert [t.task_id for t in dag.topological_sort()] == ["check_trigger", "retrain_cycle", "report"]
     dag = bag.get_dag("alpr_monitoring")
     assert [t.task_id for t in dag.topological_sort()] == ["monitoring_report", "check_alerts"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# STATUT DE PROMOTION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def test_promotion_status_explicit():
+    assert promotion_status({PROMOTION_STATUS_TAG: STATUS_PENDING}) == STATUS_PENDING
+    assert promotion_status({PROMOTION_STATUS_TAG: STATUS_PROMOTED}) == STATUS_PROMOTED
+    assert promotion_status({PROMOTION_STATUS_TAG: STATUS_REJECTED}) == STATUS_REJECTED
+
+
+def test_promotion_status_legacy_versions():
+    """Versions enregistrées avant le statut explicite : ancien tag, ou aucun tag."""
+    assert promotion_status({LEGACY_PROMOTION_TAG: "promoted: meilleure précision"}) == STATUS_PROMOTED
+    assert promotion_status({LEGACY_PROMOTION_TAG: "rejected: trop peu d'images"}) == STATUS_REJECTED
+    assert promotion_status({}) == STATUS_PENDING
+
+
+def test_only_pending_challenger_is_judged_again():
+    from src.mlops.continuous import pending_challenger
+
+    for status, expected in ((STATUS_PENDING, True), (STATUS_PROMOTED, False), (STATUS_REJECTED, False)):
+        registry = bootstrapped_registry()
+        registry.add(tags={PROMOTION_STATUS_TAG: status}, alias="challenger")
+        assert (pending_challenger(registry, settings()) is not None) is expected

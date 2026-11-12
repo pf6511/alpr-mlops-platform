@@ -37,7 +37,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from configs.settings import Settings, get_settings  # noqa: E402
-from src.mlops.registry import PROMOTION_TAG, VALIDATED_IMAGES_TAG, BrandModelRegistry  # noqa: E402
+from src.mlops.registry import STATUSES_TO_JUDGE, VALIDATED_IMAGES_TAG, BrandModelRegistry, promotion_status  # noqa: E402
 from src.training.dataset import collect_validated  # noqa: E402
 
 logger = logging.getLogger(__name__)
@@ -182,9 +182,9 @@ def run_cycle(settings: Optional[Settings] = None, storage=None, registry: Optio
 
 
 def pending_challenger(registry: BrandModelRegistry, settings: Settings):
-    """Challenger sans décision de promotion, ou None."""
+    """Challenger dont le statut demande un jugement (« pending »), ou None."""
     challenger = registry.get(settings.mlflow.challenger_alias)
-    if challenger is None or PROMOTION_TAG in challenger.tags:
+    if challenger is None or promotion_status(challenger.tags) not in STATUSES_TO_JUDGE:
         return None
     champion = registry.get(settings.mlflow.champion_alias)
     if champion is not None and champion.version == challenger.version:

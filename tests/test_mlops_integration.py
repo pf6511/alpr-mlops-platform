@@ -97,7 +97,7 @@ def test_full_mlops_cycle(mlops_env):
 def test_automatic_retraining_cycle(mlops_env):
     """Réentraînement automatique : un cycle entraîne et juge, le suivant ne fait rien."""
     from src.mlops.continuous import run_cycle
-    from src.mlops.registry import PROMOTION_TAG, VALIDATED_IMAGES_TAG
+    from src.mlops.registry import PROMOTION_STATUS_TAG, STATUS_PROMOTED, STATUS_REJECTED, VALIDATED_IMAGES_TAG
 
     settings, storage, registry = mlops_env
     settings.continuous.min_new_images = 10
@@ -110,6 +110,6 @@ def test_automatic_retraining_cycle(mlops_env):
     assert report["status"] in ("promoted", "not_promoted")
     challenger = registry.get("challenger")
     assert challenger.tags[VALIDATED_IMAGES_TAG] == "24"                 # mémoire du cycle
-    assert PROMOTION_TAG in challenger.tags                             # décision tracée
+    assert challenger.tags[PROMOTION_STATUS_TAG] in (STATUS_PROMOTED, STATUS_REJECTED)   # décision tracée
 
     assert run_cycle(settings, storage, registry)["status"] == "skipped"   # idempotent
