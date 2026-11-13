@@ -48,7 +48,11 @@ GENERIC_VEHICLE_MODEL = "yolov8s.pt"
 
 @dataclass
 class BrandBundleRef:
-    """Paquet de modèle de marque disponible localement, et son libellé d'origine."""
+    """Paquet de modèle de marque disponible localement, et son libellé d'origine.
+        format du registre : un dossier contenant
+           weights.pt      les poids seuls (state_dict), chargés avec weights_only=True
+           classes.json    la liste ordonnée des classes
+           manifest.json   le lignage : jeu de données, métriques, origine (facultatif ici)"""
 
     directory: Path
     label: str          # ex. « registry:vehicle_brand_model@champion (v3) »
@@ -67,9 +71,9 @@ class InferenceModels:
     sources: Dict[str, str] = field(default_factory=dict)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
 # UTILITAIRES
-# ═══════════════════════════════════════════════════════════════════════════════
+#  -------------------------------------------------------------------------------
 
 def detect_device() -> str:
     try:
@@ -92,12 +96,12 @@ def resolve_model_path(candidates: Sequence[Optional[str]]) -> Optional[Path]:
     return None
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
 # CHARGEURS
-# ═══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
 
 def load_plate_detector(path: Optional[str], device: str = "cpu") -> Optional[Detector]:
-    """Charge le détecteur de plaques depuis `path` (modèle ultralytics ou SimpleYOLO)."""
+    """Charge le détecteur de plaques depuis path (modèle ultralytics ou SimpleYOLO)."""
     if not path:
         return None
     name = Path(path).name
@@ -168,7 +172,8 @@ def read_local_checkpoint(path: Path, default_classes: Sequence[str], device: st
     Lit un checkpoint local historique → (state_dict, classes, infos).
 
     Formats : dictionnaire {'model_state_dict', 'label_encoder_classes', 'num_classes',
-    'epoch', 'val_acc'} ou state_dict brut. Fichier local de confiance : il peut
+    'epoch', 'val_acc'} ou state_dict brut. 
+    Fichier local de confiance : il peut
     contenir des objets Python (weights_only=False). Un modèle venant du registre
     passe, lui, par `read_bundle` (weights_only=True).
     """
@@ -213,11 +218,10 @@ def classifier_from_state(state_dict, classes: Sequence[str], device: str = "cpu
     return TorchBrandClassifier(network, build_brand_transform(), classes, device=device)
 
 
-def load_brand_classifier(
+def load_brand_classifier_from_checkpoint(
     path: Optional[Path], default_classes: Sequence[str], device: str = "cpu"
 ) -> Optional[BrandClassifier]:
-    """Charge le classificateur de marque depuis un checkpoint local historique.
-        TODO rename load_brand_classifier_from_checkpoint"""
+    """Charge le classificateur de marque depuis un checkpoint local historique."""
     if path is None:
         return None
     try:
@@ -233,9 +237,8 @@ def load_brand_classifier(
         return None
 
 
-def load_brand_bundle(directory: Optional[Path], device: str = "cpu") -> Optional[BrandClassifier]:
-    """Charge le classificateur depuis un paquet du registre (téléchargé localement).
-        TODO RENAME load_brand_classifier_from_bundle """
+def load_brand_classifier_from_bundle(directory: Optional[Path], device: str = "cpu") -> Optional[BrandClassifier]:
+    """Charge le classificateur depuis un paquet du registre (téléchargé localement). """
     if directory is None:
         return None
     try:
@@ -246,9 +249,9 @@ def load_brand_bundle(directory: Optional[Path], device: str = "cpu") -> Optiona
         return None
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
 # POINT D'ENTRÉE
-# ═══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
 
 def load_models(
     settings: Optional[Settings] = None,
@@ -259,7 +262,7 @@ def load_models(
     """
     Charge tous les modèles selon la configuration.
 
-    `brand_bundle` : paquet du registre déjà téléchargé (fourni par la couche MLOps).
+    brand_bundle : paquet du registre déjà téléchargé (fourni par la couche MLOps).
     S'il est absent ou illisible, le classificateur vient du fichier local.
     """
     settings = settings or get_settings()
@@ -289,7 +292,7 @@ def load_models(
         models.sources["vehicle_detector"] = vehicle_source
 
         if brand_bundle is not None:
-            models.brand_classifier = load_brand_bundle(brand_bundle.directory, device)
+            models.brand_classifier = load_brand_classifier_from_bundle(brand_bundle.directory, device)
             models.sources["brand_classifier"] = brand_bundle.label
         if models.brand_classifier is None:
             if brand_bundle is not None:
@@ -297,7 +300,7 @@ def load_models(
             brand_path = resolve_model_path([cfg.efficientnet_path])
             if brand_path is None:
                 logger.warning("%s introuvable : classification de marque désactivée.", cfg.efficientnet_path)
-            models.brand_classifier = load_brand_classifier(brand_path, cfg.brand_classes, device)
+            models.brand_classifier = load_brand_classifier_from_checkpoint(brand_path, cfg.brand_classes, device)
             models.sources["brand_classifier"] = f"local:{brand_path}" if brand_path else "absent"
 
     for role, source in models.sources.items():

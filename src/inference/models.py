@@ -21,34 +21,34 @@ from .types import Detection
 logger = logging.getLogger(__name__)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
 # PORTS
-# ═══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
 
 class Detector(Protocol):
-    """Détecteur d'objets : image BGR → boîtes au-dessus du seuil."""
+    """Détecteur d'objets : image BGR --> boîtes au-dessus du seuil."""
 
     def detect(self, image_bgr: np.ndarray, conf_threshold: float) -> List[Detection]:
         ...
 
 
 class PlateReader(Protocol):
-    """OCR de plaque : image BGR recadrée → (texte, confiance ou None)."""
+    """OCR de plaque : image BGR recadrée --> (texte, confiance ou None)."""
 
     def read(self, plate_bgr: np.ndarray) -> Tuple[str, Optional[float]]:
         ...
 
 
 class BrandClassifier(Protocol):
-    """Classificateur de marque : image BGR du véhicule → [(marque, proba)] triées."""
+    """Classificateur de marque : image BGR du véhicule --> [(marque, proba)] triées."""
 
     def predict(self, vehicle_bgr: np.ndarray, top_k: int = 3) -> List[Tuple[str, float]]:
         ...
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# -------------------------------------------------------------------------------
 # ADAPTATEURS : DÉTECTION
-# ═══════════════════════════════════════════════════════════════════════════════
+# -------------------------------------------------------------------------------
 
 class UltralyticsDetector:
     """Adaptateur pour un modèle YOLO ultralytics."""
@@ -72,7 +72,7 @@ class UltralyticsDetector:
 
 
 class SimpleYoloDetector:
-    """Adaptateur pour le modèle maison SimpleYOLO (grille 13×13, entrée 416×416)."""
+    """Adaptateur pour le modèle maison SimpleYOLO (grille 13x13, entrée 416x416)."""
 
     INPUT_SIZE = 416
     GRID_SIZE = 13
@@ -118,9 +118,9 @@ class SimpleYoloDetector:
         return detections
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# -------------------------------------------------------------------------------
 # ADAPTATEUR : OCR
-# ═══════════════════════════════════════════════════════════════════════════════
+# -------------------------------------------------------------------------------
 
 def _mean_probability(probs: Any) -> Optional[float]:
     """Moyenne des probabilités par caractère, ou None si absentes/invalides."""
@@ -135,12 +135,12 @@ def _mean_probability(probs: Any) -> Optional[float]:
 
 def parse_ocr_output(output: Any) -> Tuple[str, Optional[float]]:
     """
-    Normalise la sortie de `LicensePlateRecognizer.run`.
+    Normalise la sortie de LicensePlateRecognizer.run.
 
     Deux formats coexistent selon la version de fast-plate-ocr :
     - récent : liste d'objets prédiction (attribut `plate`, probabilités par
       caractère éventuelles) ;
-    - ancien, avec `return_confidence=True` : tuple `(textes, probabilités)`.
+    - ancien, avec return_confidence=True : tuple (textes, probabilités).
     """
     if not output:
         return "", None
@@ -187,9 +187,9 @@ class FastPlateOcrReader:
         return normalize_plate_text(text), confidence
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# -------------------------------------------------------------------------------
 # ADAPTATEUR : CLASSIFICATION DE MARQUE
-# ═══════════════════════════════════════════════════════════════════════════════
+# -------------------------------------------------------------------------------
 
 class TorchBrandClassifier:
     """Adaptateur pour un classificateur PyTorch (EfficientNet B0 torchvision)."""

@@ -89,7 +89,7 @@ def record_decision(registry: BrandModelRegistry, version: str, status: str, rea
 
 def run_promotion(settings: Optional[Settings] = None, storage=None, registry: Optional[BrandModelRegistry] = None,
                   min_test_images: int = 20, f1_tolerance: float = 0.0) -> Dict[str, Any]:
-    from src.training import trainer
+    from src.training import brand_trainer
     from src.training.metrics import classification_metrics
 
     settings = settings or get_settings()
@@ -115,8 +115,8 @@ def run_promotion(settings: Optional[Settings] = None, storage=None, registry: O
     with tempfile.TemporaryDirectory() as tmp:
         items, missing = _test_items(manifest, classes, storage, Path(tmp))
         targets = [t for _, t in items]
-        challenger_m = classification_metrics(trainer.predict(challenger_state, classes, items), targets, classes)
-        champion_m = classification_metrics(trainer.predict(champion_state, classes, items), targets, classes)
+        challenger_m = classification_metrics(brand_trainer.predict(challenger_state, classes, items), targets, classes)
+        champion_m = classification_metrics(brand_trainer.predict(champion_state, classes, items), targets, classes)
 
     decision = decide_promotion(champion_m, challenger_m, min_test_images, f1_tolerance)
     status = STATUS_PROMOTED if decision.promote else STATUS_REJECTED

@@ -1,9 +1,14 @@
 """
-Racine de composition : crée chaque composant une seule fois et les relie.
+Racine de composition des points d'entrée de service (interface Gradio, API REST)
+ crée chaque composant une seule fois et les relie.
 
 C'est le seul endroit qui sait « qui a besoin de quoi ». Les services reçoivent
 leurs dépendances (injection) au lieu de les créer eux-mêmes : une seule
 connexion à la base, un seul moteur d'inférence, partagés par tous.
+
+Les scripts en ligne de commande (cycle de réentraînement, entraînement, promotion,
+monitoring) assemblent leurs propres dépendances : ils les acceptent en paramètre
+et, à défaut, les créent avec la configuration par défaut.
 """
 
 from __future__ import annotations
@@ -69,7 +74,7 @@ def _registry_and_champion(settings: Settings):
     except Exception as exc:  # noqa: BLE001 - registre injoignable : repli sur le fichier local
         logger.warning("Registre MLflow injoignable (%s) : %s", settings.mlflow.tracking_uri, exc)
         bundle = None
-    return registry, bundle
+    return (registry, bundle)
 
 
 def _retraining_progress(settings: Settings, storage, registry):
@@ -84,7 +89,7 @@ def _retraining_progress(settings: Settings, storage, registry):
 def build_services(settings: Optional[Settings] = None,
                    engine: Optional[ALPREngine] = None,
                    db=None) -> Services:
-    """Assemble l'application. `engine` et `db` peuvent être fournis (tests)."""
+    """Assemble l'application. engine et  db peuvent être fournis (tests)."""
     settings = settings or get_settings()
     db = db if db is not None else DatabaseManager(settings=settings)
     registry, champion = _registry_and_champion(settings) if engine is None else (None, None)
