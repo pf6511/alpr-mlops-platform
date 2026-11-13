@@ -21,7 +21,7 @@ from PIL import Image  # noqa: E402
 
 from configs.settings import get_settings  # noqa: E402
 from src.data.storage import StorageManager  # noqa: E402
-from src.inference.loader import build_brand_network, load_brand_bundle  # noqa: E402
+from src.inference.loader import build_brand_network, load_brand_classifier_from_bundle  # noqa: E402
 from src.mlops.bootstrap import bootstrap  # noqa: E402
 from src.mlops.promote import run_promotion  # noqa: E402
 from src.mlops.registry import BrandModelRegistry  # noqa: E402
@@ -90,7 +90,7 @@ def test_full_mlops_cycle(mlops_env):
     assert registry.get("champion").version == expected_champion
 
     # 4. Le moteur charge le champion du registre (poids sans code, weights_only)
-    classifier = load_brand_bundle(registry.download().directory)
+    classifier = load_brand_classifier_from_bundle(registry.download().directory)
     assert classifier is not None and len(classifier.classes) == len(settings.models.brand_classes)
 
 

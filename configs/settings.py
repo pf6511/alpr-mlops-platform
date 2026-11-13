@@ -115,7 +115,7 @@ class RetentionSettings:
     Durées de conservation des données personnelles (RGPD, art. 5.1.e).
 
     Les images d'incohérences (véhicule et plaque visibles) ne servent qu'à la
-    validation par un opérateur : au-delà de `captures_days`, le stockage les
+    validation par un opérateur : au-delà de captures_days, le stockage les
     supprime lui-même (règle de cycle de vie S3, voir src/data/retention.py).
     """
     captures_days: int = 30
@@ -127,9 +127,9 @@ class ContinuousTrainingSettings:
     """
     Réentraînement automatique du classificateur de marque (src/mlops/continuous.py).
 
-    Un cycle : assez de nouvelles images validées ? → entraînement → promotion.
+    Un cycle : assez de nouvelles images validées ? --> entraînement --> promotion.
     L'application vérifie la version du champion toutes les
-    `champion_refresh_minutes` et charge la nouvelle sans redémarrer.
+    "champion_refresh_minutes" et charge la nouvelle sans redémarrer.
     """
     interval_hours: float = 24.0        # période entre deux cycles (mode --loop)
     min_new_images: int = 20            # nouvelles images validées pour déclencher
@@ -144,8 +144,8 @@ class MonitoringSettings:
     """
     Monitoring de la solution en production (src/monitoring/report.py).
 
-    Compare la période récente (`current_days`) à une période de référence
-    (les `reference_days` précédents) et contrôle les seuils issus des critères
+    Compare la période récente (current_days) à une période de référence
+    (les reference_days précédents) et contrôle les seuils issus des critères
     d'acceptation du cahier des charges.
     """
     current_days: int = 7               # période surveillée : les N derniers jours

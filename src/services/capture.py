@@ -1,7 +1,7 @@
 """
 Cas d'usage principal : traiter le passage d'un véhicule.
 
-    photo → analyse → résident ? → accès → marque cohérente ? → journal
+    photo --> analyse --> résident ? --> accès --> marque cohérente ? --> journal
 
 Toute la logique métier d'un passage est ici, et seulement ici. Le service ne
 connaît pas Gradio : il reçoit une image et renvoie un `CaptureOutcome`, que
@@ -148,7 +148,7 @@ class ALPRService:
         )
 
     def _record_mismatch(self, outcome: CaptureOutcome) -> Optional[str]:
-        """Sauvegarde l'image du véhicule ; renvoie sa clé de stockage (ou None)."""
+        """Sauvegarde l'image du véhicule; renvoie sa clé de stockage (ou None)."""
         if self.mismatch_detector is None:
             return None
         vehicle = outcome.result.vehicle

@@ -3,7 +3,7 @@ ALPR Engine - Adaptateur ligne de commande du cœur d'inférence.
 
     python -m pipelines.inference_pipeline image.jpg --declared-brand Renault
 
-Toute l'inférence est déléguée à `src.inference.ALPREngine` : ce module ne fait
+Toute l'inférence est déléguée à src.inference.ALPREngine : ce module ne fait
 que lire les arguments et mettre le résultat au format JSON.
 """
 

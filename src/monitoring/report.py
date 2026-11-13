@@ -4,9 +4,9 @@ ALPR - Rapport de monitoring de la solution en production.
     python -m src.monitoring.report                 # période récente vs référence
     python -m src.monitoring.report --no-drift      # indicateurs seuls (sans Evidently)
 
-Les briques, dans l'ordre :
+Etapes du processus, dans l'ordre :
 
-    1. COLLECTE      chaque passage est journalisé avec ses mesures (table logs)
+    1. COLLECTE (en amont)      chaque passage est journalisé avec ses mesures (table logs)
     2. LECTURE       la vue monitoring.passages (le journal SANS les plaques)
     3. PÉRIODES      récente (current_days) / référence (les reference_days d'avant)
     4. INDICATEURS   service, données, modèle (calculs simples, pandas)
@@ -17,7 +17,8 @@ Les briques, dans l'ordre :
 
 Le taux d'erreur du modèle de marque vient des validations de l'opérateur : pour une
 incohérence validée, le modèle avait raison si la marque retenue est la marque
-prédite. Limite : seules les incohérences sont validées (indicateur partiel).
+prédite. 
+Limite : seules les incohérences sont validées (indicateur partiel).
 """
 
 from __future__ import annotations
@@ -49,9 +50,9 @@ NUMERICAL_COLUMNS = ["marque_confiance", "ocr_confiance", "luminosite", "nettete
 CATEGORICAL_COLUMNS = ["marque_predite", "motif", "source"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
 # 2. LECTURE
-# ═══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
 
 def load_passages(since: datetime, db=None) -> pd.DataFrame:
     """Passages depuis `since`, lus dans la vue monitoring.passages (sans plaques)."""
@@ -68,9 +69,9 @@ def load_passages(since: datetime, db=None) -> pd.DataFrame:
     return df
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
 # 3. PÉRIODES
-# ═══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
 
 def split_periods(df: pd.DataFrame, now: datetime,
                   settings: MonitoringSettings) -> Tuple[pd.DataFrame, pd.DataFrame]:
@@ -79,14 +80,14 @@ def split_periods(df: pd.DataFrame, now: datetime,
         return df, df
     current_start = now - timedelta(days=settings.current_days)
     reference_start = current_start - timedelta(days=settings.reference_days)
-    reference = df[(df["timestamp"] >= reference_start) & (df["timestamp"] < current_start)]
-    current = df[df["timestamp"] >= current_start]
-    return reference, current
+    reference: pd.DataFrame = df[(df["timestamp"] >= reference_start) & (df["timestamp"] < current_start)]
+    current:pd.DataFrame = df[df["timestamp"] >= current_start]
+    return (reference, current)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
 # 4. INDICATEURS
-# ═══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
 
 def _mean(series: pd.Series) -> Optional[float]:
     series = pd.to_numeric(series, errors="coerce").dropna()
@@ -94,15 +95,17 @@ def _mean(series: pd.Series) -> Optional[float]:
 
 
 def brand_error_rate(df: pd.DataFrame) -> Tuple[Optional[float], int]:
-    """(taux d'erreur, nombre de validations) : le modèle se trompe si la marque retenue ≠ prédite."""
+    """(taux d'erreur, nombre de validations) : le modèle se trompe si la marque retenue diffèrente de marque prédite."""
     if df.empty:
         return None, 0
     validated = df[df["validation_status"] == "validated"].dropna(subset=["validated_label", "marque_predite"])
     if validated.empty:
         return None, 0
-    wrong = validated.apply(
-        lambda r: normalize_brand(r["validated_label"]) != normalize_brand(r["marque_predite"]), axis=1)
-    return round(float(wrong.mean()), 4), len(validated)
+    
+    predicted = validated["marque_predite"].map(normalize_brand)
+    retained = validated["validated_label"].map(normalize_brand)
+    wrong = predicted != retained
+    return (round(float(wrong.mean()), 4), len(validated))
 
 
 def compute_indicators(df: pd.DataFrame) -> Dict[str, Any]:

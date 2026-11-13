@@ -1,8 +1,8 @@
 """
 Moteur d'inférence ALPR : la seule implémentation de l'analyse d'une image.
 
-Branche 1 : détection de plaque → OCR.
-Branche 2 : détection du véhicule → classification de la marque.
+Branche 1 : détection de plaque --> OCR.
+Branche 2 : détection du véhicule --> classification de la marque.
 
 Le moteur ne connaît que les interfaces des modèles (voir `models.py`) et ne
 fait ni affichage, ni accès base de données : il renvoie un `InferenceResult`.
@@ -25,7 +25,7 @@ from .conditions import estimate_conditions
 from .loader import (
     BrandBundleRef,
     InferenceModels,
-    load_brand_bundle,
+    load_brand_classifier_from_bundle,
     load_models,
     load_plate_detector,
     resolve_model_path,
@@ -59,7 +59,7 @@ def _crop(image: np.ndarray, bbox) -> Optional[np.ndarray]:
 
 
 class ALPREngine:
-    """Analyse d'images de véhicules : plaques, véhicule, marque."""
+    """Analyse d'images de véhicules : plaques, véhicule et marque."""
 
     def __init__(
         self,
@@ -75,9 +75,9 @@ class ALPREngine:
             brand_bundle=brand_bundle,
         )
 
-    # ═══════════════════════════════════════════════════════════════════════════
+    # ---------------------------------------------------------------------------
     # ÉTAPES UNITAIRES
-    # ═══════════════════════════════════════════════════════════════════════════
+    # ---------------------------------------------------------------------------
 
     def detect_plates(self, image: np.ndarray, conf_threshold: Optional[float] = None) -> List[PlateResult]:
         detector = self.models.plate_detector
@@ -144,9 +144,9 @@ class ALPREngine:
             return None
         return BrandResult(brand=top[0][0], confidence=top[0][1], top3=top)
 
-    # ═══════════════════════════════════════════════════════════════════════════
-    # ANALYSE COMPLÈTE
-    # ═══════════════════════════════════════════════════════════════════════════
+    # --------------------------------------------------------------------------
+    # ANALYSE COMPLÈTE (chaînage des détections)
+    # --------------------------------------------------------------------------
 
     def analyze(
         self,
@@ -178,9 +178,9 @@ class ALPREngine:
             brand=brand,
         )
 
-    # ═══════════════════════════════════════════════════════════════════════════
+    # ---------------------------------------------------------------------------
     # GESTION DES MODÈLES
-    # ═══════════════════════════════════════════════════════════════════════════
+    # ---------------------------------------------------------------------------
 
     def reload_plate_detector(self, model_name: str):
         """Remplace le détecteur de plaques par un fichier de models/. Renvoie (succès, message)."""
@@ -196,7 +196,7 @@ class ALPREngine:
 
     def replace_brand_classifier(self, bundle: BrandBundleRef):
         """Remplace le classificateur de marque par un paquet du registre. Renvoie (succès, message)."""
-        classifier = load_brand_bundle(bundle.directory, self.models.device)
+        classifier = load_brand_classifier_from_bundle(bundle.directory, self.models.device)
         if classifier is None:
             return False, f"❌ Paquet illisible : {bundle.label}"
         self.models.brand_classifier = classifier

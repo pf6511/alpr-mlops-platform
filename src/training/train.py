@@ -1,5 +1,5 @@
 """
-Réentraînement du classificateur de marque → nouvelle version « challenger ».
+Réentraînement du classificateur de marque --> nouvelle version « challenger ».
 
     python -m src.training.train --epochs 3
     python -m src.training.train --base-dir /data/vmmrdb_par_marque --max-per-class 200
@@ -31,7 +31,7 @@ from configs.settings import Settings, get_settings  # noqa: E402
 from src.inference.loader import read_bundle  # noqa: E402
 from src.mlops.bundle import write_bundle  # noqa: E402
 from src.mlops.registry import PROMOTION_STATUS_TAG, STATUS_PENDING, VALIDATED_IMAGES_TAG, BrandModelRegistry  # noqa: E402
-from src.training import trainer  # noqa: E402
+from src.training import brand_trainer  # noqa: E402
 from src.training.dataset import build_manifest, collect_base, collect_validated, materialize, split_samples  # noqa: E402
 from src.training.metrics import classification_metrics  # noqa: E402
 
@@ -86,11 +86,11 @@ def run_training(settings: Optional[Settings] = None, storage=None, registry: Op
         params = {"epochs": epochs, "lr": lr, "batch_size": batch_size, "freeze_backbone": freeze_backbone,
                   "test_fraction": test_fraction, "max_per_class": max_per_class or "toutes",
                   "parent": champion.label, "dataset_id": manifest["dataset_id"]}
-        new_state, history = trainer.train(champion_state, classes, train_items, epochs=epochs, lr=lr,
+        new_state, history = brand_trainer.train(champion_state, classes, train_items, epochs=epochs, lr=lr,
                                            batch_size=batch_size, freeze_backbone=freeze_backbone)
         targets = [t for _, t in test_items]
-        challenger_m = classification_metrics(trainer.predict(new_state, classes, test_items), targets, classes)
-        champion_m = classification_metrics(trainer.predict(champion_state, classes, test_items), targets, classes)
+        challenger_m = classification_metrics(brand_trainer.predict(new_state, classes, test_items), targets, classes)
+        champion_m = classification_metrics(brand_trainer.predict(champion_state, classes, test_items), targets, classes)
 
         # 5. Enregistrement : paquet + lignage
         bundle = write_bundle(Path(tmp) / "bundle", new_state, classes, {
