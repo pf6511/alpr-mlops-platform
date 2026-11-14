@@ -20,6 +20,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from configs.settings import get_settings
 
 
+# Métadonnées conservées avec une image du jeu de données (aucune donnée de passage)
+LABELED_METADATA_KEYS = ("label", "original_prediction", "declared", "original_confidence")
+
+
 def anonymous_image_name() -> str:
     """
     Nom de fichier aléatoire pour une image de véhicule (pseudonymisation, RGPD).
@@ -215,16 +219,17 @@ class StorageManager:
     
     def upload_image(self, image: Union[Image.Image, np.ndarray, str, Path],
                      key: str, bucket_type: str = 'captures',
-                     quality: int = 95) -> Tuple[bool, str]:
+                     quality: int = 95, metadata: Dict = None) -> Tuple[bool, str]:
         """
         Upload une image (PIL, numpy array, ou chemin).
-        
+
         Args:
             image: Image PIL, numpy array, ou chemin fichier
             key: Clé/chemin dans le bucket
             bucket_type: 'dataset' ou 'captures'
             quality: Qualité JPEG (1-100)
-            
+            metadata: Métadonnées optionnelles (S3 uniquement : un fichier local n'en a pas)
+
         Returns:
             (success, url_or_error)
         """
@@ -249,20 +254,26 @@ class StorageManager:
         
         # Upload
         if self.mode == "s3":
-            return self._upload_bytes_s3(buffer, key, bucket_type)
+            return self._upload_bytes_s3(buffer, key, bucket_type, metadata)
         else:
             return self._upload_bytes_local(buffer, key, bucket_type)
-    
-    def _upload_bytes_s3(self, buffer: BinaryIO, key: str, bucket_type: str) -> Tuple[bool, str]:
+
+    def _upload_bytes_s3(self, buffer: BinaryIO, key: str, bucket_type: str,
+                         metadata: Dict = None) -> Tuple[bool, str]:
         """Upload bytes vers S3."""
         bucket = self._get_bucket(bucket_type)
-        
+
         try:
+            extra_args = {}
+            if metadata:
+                extra_args['Metadata'] = {k: str(v) for k, v in metadata.items()}
             content_type = self._get_content_type(Path(key))
-            
+            if content_type:
+                extra_args['ContentType'] = content_type
+
             self.s3_client.upload_fileobj(
                 buffer, bucket, key,
-                ExtraArgs={'ContentType': content_type} if content_type else None
+                ExtraArgs=extra_args if extra_args else None
             )
             
             url = f"{self.s3_config.endpoint}/{bucket}/{key}"
@@ -463,14 +474,19 @@ class StorageManager:
         Sauvegarde une image labellisée pour le dataset de retraining.
 
         Minimisation (RGPD) : ni la plaque, ni l'horodatage dans le nom du fichier.
-        L'image est rangée sous : labeled/<marque>/<identifiant aléatoire>.jpg : aucun
+        L'image est rangée sous `labeled/<marque>/<identifiant aléatoire>.jpg` : aucun
         lien avec le passage d'origine (la table logs ne référence que la capture).
+
+        Métadonnées : seules les clés de LABELED_METADATA_KEYS sont conservées (marque
+        retenue, prédiction d'origine, marque déclarée, confiance) : utiles pour analyser
+        les erreurs du modèle. Aucun horodatage ni validateur : ils permettraient de
+        retrouver le passage en les croisant avec la table logs.
 
         Args:
             image: Image à sauvegarder
             label: Label/marque corrigée
             confidence: Confiance de la prédiction originale
-            metadata: Métadonnées supplémentaires (sans donnée personnelle)
+            metadata: Métadonnées supplémentaires (filtrées par LABELED_METADATA_KEYS)
 
         Returns:
             (success, path_or_error)
@@ -478,21 +494,16 @@ class StorageManager:
         safe_label = label.lower().replace(" ", "_")
         key = f"labeled/{safe_label}/{anonymous_image_name()}"
 
-        # Ajouter métadonnées
-        full_metadata = {
-            'label': label,
-            'labeled_at': datetime.now().isoformat()
-        }
-        if confidence is not None:
-            full_metadata['original_confidence'] = str(confidence)
-        if metadata:
-            full_metadata.update(metadata)
-        
+        # Métadonnées : liste blanche, valeurs vides ignorées
+        candidates = {'label': label, 'original_confidence': confidence, **(metadata or {})}
+        kept_metadata = {k: str(v) for k, v in candidates.items()
+                         if k in LABELED_METADATA_KEYS and v is not None}
+
         # Upload
         if isinstance(image, (str, Path)):
-            return self.upload_file(image, key, 'dataset', full_metadata)
+            return self.upload_file(image, key, 'dataset', kept_metadata)
         else:
-            return self.upload_image(image, key, 'dataset')
+            return self.upload_image(image, key, 'dataset', metadata=kept_metadata)
     
     def get_dataset_stats(self) -> Dict:
         """

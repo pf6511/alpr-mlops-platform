@@ -39,6 +39,11 @@ except ImportError:
     STORAGE_AVAILABLE = False
 
 
+def _brand_or_none(brand: Optional[str]) -> Optional[str]:
+    """Marque normalisée (« Citroën » → « citroen »), ou None si absente."""
+    return normalize_brand(brand) if brand else None
+
+
 @dataclass
 class MismatchRecord:
     """Enregistrement d'un mismatch détecté."""
@@ -304,11 +309,11 @@ class MismatchDetector:
                 image=image.convert('RGB'),
                 label=label,
                 confidence=record.confiance,
+                # Pour l'analyse des erreurs du modèle ; ni horodatage ni validateur
+                # (ils permettraient de retrouver le passage dans la table logs)
                 metadata={
-                    'original_prediction': record.marque_predite,
-                    'declared': record.marque_declaree,
-                    'validated_by': validator,
-                    'validated_at': datetime.now().isoformat()
+                    'original_prediction': _brand_or_none(record.marque_predite),
+                    'declared': _brand_or_none(record.marque_declaree),
                 }
             )
             if success:

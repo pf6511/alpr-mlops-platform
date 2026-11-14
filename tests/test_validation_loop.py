@@ -121,3 +121,45 @@ def test_anonymous_names_are_unique():
 
     names = {anonymous_image_name() for _ in range(1000)}
     assert len(names) == 1000
+
+
+def test_validation_sends_error_metadata(tmp_path):
+    """La validation transmet la prédiction et la marque déclarée, sans horodatage ni validateur."""
+    db, storage, detector, service = make_loop(tmp_path)
+    service.process(make_image())
+
+    sent = {}
+    original = storage.save_labeled_image
+
+    def spy(image, label, confidence=None, metadata=None):
+        sent.update(metadata or {})
+        return original(image, label, confidence=confidence, metadata=metadata)
+
+    storage.save_labeled_image = spy
+    ValidationService(detector).act("AB123CD", VALIDATE_DECLARED)
+    assert sent == {"original_prediction": "renault", "declared": "peugeot"}
+
+
+def test_labeled_metadata_reaches_s3_without_passage_data():
+    """En S3, les métadonnées sont bien enregistrées, filtrées par la liste blanche."""
+    from PIL import Image
+
+    class FakeS3:
+        def upload_fileobj(self, buffer, bucket, key, ExtraArgs=None):
+            self.extra_args = ExtraArgs
+
+    storage = StorageManager()
+    storage.mode, storage.s3_client = "s3", FakeS3()
+
+    success, _ = storage.save_labeled_image(
+        Image.new("RGB", (8, 8)), "mazda", confidence=0.588,
+        metadata={"original_prediction": "hyundai", "declared": "mazda",
+                  # données de passage : doivent être écartées
+                  "validated_by": "operator", "validated_at": "2026-11-14T12:00:00", "plaque": "AB123CD"},
+    )
+    assert success
+    assert storage.s3_client.extra_args["Metadata"] == {
+        "label": "mazda", "original_confidence": "0.588",
+        "original_prediction": "hyundai", "declared": "mazda",
+    }
+    assert storage.s3_client.extra_args["ContentType"] == "image/jpeg"
