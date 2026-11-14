@@ -21,6 +21,7 @@ import cv2
 import numpy as np
 
 from src.inference import ALPREngine, InferenceResult, is_brand_mismatch
+from src.services.privacy import mask_plates
 
 logger = logging.getLogger(__name__)
 
@@ -148,13 +149,16 @@ class ALPRService:
         )
 
     def _record_mismatch(self, outcome: CaptureOutcome) -> Optional[str]:
-        """Sauvegarde l'image du véhicule; renvoie sa clé de stockage (ou None)."""
+        """Sauvegarde l'image du véhicule, plaques masquées ; renvoie sa clé de stockage (ou None)."""
         if self.mismatch_detector is None:
             return None
         vehicle = outcome.result.vehicle
         crop_rgb = None
         if vehicle is not None and vehicle.crop is not None:
-            crop_rgb = cv2.cvtColor(vehicle.crop, cv2.COLOR_BGR2RGB)  # le stockage attend du RGB
+            # RGPD : plaques masquées AVANT tout enregistrement (capture, puis jeu d'entraînement)
+            plate_bboxes = [plate.bbox for plate in outcome.result.plates]
+            masked = mask_plates(vehicle.crop, vehicle.bbox, plate_bboxes)
+            crop_rgb = cv2.cvtColor(masked, cv2.COLOR_BGR2RGB)  # le stockage attend du RGB
         record = self.mismatch_detector.detect_and_record(
             plaque=outcome.plate_text,
             marque_predite=outcome.result.brand.brand,
