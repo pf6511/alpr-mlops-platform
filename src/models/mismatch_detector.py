@@ -15,6 +15,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from configs.settings import get_settings
+from src.data.storage import anonymous_image_name
 from src.inference.brands import is_brand_mismatch, normalize_brand
 
 # Imports optionnels
@@ -158,10 +159,10 @@ class MismatchDetector:
         # Sauvegarder l'image vers S3/local
         if vehicle_crop is not None and self.storage and NUMPY_AVAILABLE:
             try:
-                # Générer le chemin
+                # Générer le chemin : nom aléatoire, sans la plaque (pseudonymisation).
+                # Le lien avec le passage est la colonne logs.image_key (en base, sur site).
                 date_str = datetime.now().strftime("%Y%m%d")
-                safe_plaque = plaque.replace("-", "").replace(" ", "")
-                key = f"mismatches/{date_str}/{safe_plaque}_{datetime.now().strftime('%H%M%S')}.jpg"
+                key = f"mismatches/{date_str}/{anonymous_image_name()}"
                 
                 # Upload
                 success, result = self.storage.upload_image(
@@ -302,7 +303,6 @@ class MismatchDetector:
             success, result = self.storage.save_labeled_image(
                 image=image.convert('RGB'),
                 label=label,
-                plaque=record.plaque,
                 confidence=record.confiance,
                 metadata={
                     'original_prediction': record.marque_predite,

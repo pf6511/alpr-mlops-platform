@@ -95,3 +95,29 @@ def test_existing_database_is_migrated(tmp_path):
     assert log["plaque"] == "AB123CD"
     assert {"image_key", "validation_status", "validated_label", "validated_at"} <= set(log)
     assert len(db.get_mismatch_logs()) == 1          # l'ancienne incohérence reste en attente
+
+
+def test_stored_images_carry_no_plate(tmp_path):
+    """Pseudonymisation : ni la capture ni l'image validée ne portent la plaque dans leur nom."""
+    import re
+
+    db, storage, detector, service = make_loop(tmp_path)
+    random_name = re.compile(r"^[0-9a-f]{32}\.jpg$")                # identifiant aléatoire (UUID4)
+
+    # Capture de l'incohérence : mismatches/<date>/<identifiant>.jpg
+    key = service.process(make_image()).mismatch_image_key
+    assert "AB123CD" not in key
+    assert key.startswith("mismatches/") and random_name.match(Path(key).name)
+
+    # Image validée : labeled/<marque>/<identifiant>.jpg, sans plaque ni horodatage
+    ValidationService(detector).act("AB123CD", VALIDATE_DECLARED)
+    labeled = list((storage.local_paths["dataset"] / "labeled" / "peugeot").glob("*.jpg"))
+    assert len(labeled) == 1
+    assert random_name.match(labeled[0].name)
+
+
+def test_anonymous_names_are_unique():
+    from src.data.storage import anonymous_image_name
+
+    names = {anonymous_image_name() for _ in range(1000)}
+    assert len(names) == 1000

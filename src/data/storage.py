@@ -7,6 +7,7 @@ import os
 import io
 import json
 import shutil
+import uuid
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, List, Dict, Tuple, BinaryIO, Union
@@ -17,6 +18,17 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from configs.settings import get_settings
+
+
+def anonymous_image_name() -> str:
+    """
+    Nom de fichier aléatoire pour une image de véhicule (pseudonymisation, RGPD).
+
+    Un identifiant aléatoire (UUID4) n'a aucun lien avec la plaque, contrairement à
+    un hachage de la plaque, qu'on retrouverait par force brute (l'ensemble des
+    plaques possibles se parcourt en quelques minutes).
+    """
+    return f"{uuid.uuid4().hex}.jpg"
 
 # S3 support (optionnel)
 try:
@@ -445,31 +457,29 @@ class StorageManager:
     # ═══════════════════════════════════════════════════════════════════════════
     
     def save_labeled_image(self, image: Union[Image.Image, np.ndarray, str, Path],
-                           label: str, plaque: str, confidence: float = None,
+                           label: str, confidence: float = None,
                            metadata: Dict = None) -> Tuple[bool, str]:
         """
         Sauvegarde une image labellisée pour le dataset de retraining.
-        
+
+        Minimisation (RGPD) : ni la plaque, ni l'horodatage dans le nom du fichier.
+        L'image est rangée sous : labeled/<marque>/<identifiant aléatoire>.jpg : aucun
+        lien avec le passage d'origine (la table logs ne référence que la capture).
+
         Args:
             image: Image à sauvegarder
             label: Label/marque corrigée
-            plaque: Plaque d'immatriculation associée
             confidence: Confiance de la prédiction originale
-            metadata: Métadonnées supplémentaires
-            
+            metadata: Métadonnées supplémentaires (sans donnée personnelle)
+
         Returns:
             (success, path_or_error)
         """
-        # Générer le chemin : dataset/brand_name/YYYYMMDD_HHMMSS_plaque.jpg
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         safe_label = label.lower().replace(" ", "_")
-        safe_plaque = plaque.replace("-", "").replace(" ", "")
-        
-        key = f"labeled/{safe_label}/{timestamp}_{safe_plaque}.jpg"
-        
+        key = f"labeled/{safe_label}/{anonymous_image_name()}"
+
         # Ajouter métadonnées
         full_metadata = {
-            'plaque': plaque,
             'label': label,
             'labeled_at': datetime.now().isoformat()
         }
