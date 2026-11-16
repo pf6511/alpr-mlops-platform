@@ -96,11 +96,12 @@ class ModelSettings:
     yolo_plate_path: str = "models/best_model_detection_plaque.pt"
     yolo_vehicle_path: str = "models/yolov8s.pt"
     efficientnet_path: str = "models/best_model_efficientNet_finetune.pth"
+    # Les 22 classes du modèle d'origine, noms exacts (voir configs/config.yaml)
     brand_classes: List[str] = field(default_factory=lambda: [
-        "audi", "bmw", "citroen", "dacia", "fiat", "ford", "honda",
-        "hyundai", "kia", "mazda", "mercedes", "nissan", "opel",
-        "peugeot", "renault", "seat", "skoda", "suzuki", "toyota",
-        "volkswagen", "volvo", "other"
+        "audi", "bmw", "citroen", "ford", "honda", "hyundai", "jaguar", "kia",
+        "landrover", "mazda", "mercedes benz", "mini", "mitsubishi", "nissan",
+        "peugeot", "porsche", "renault", "saab", "suzuki", "toyota",
+        "volkswagen", "volvo"
     ])
     ocr_model: str = "global-plates-mobile-vit-v2-model"
     detection_threshold: float = 0.25

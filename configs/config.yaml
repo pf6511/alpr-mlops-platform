@@ -130,30 +130,35 @@ models:
   # Modèle OCR fast-plate-ocr (surchargeable par MODEL_OCR_NAME)
   ocr_model: global-plates-mobile-vit-v2-model
   
-  # Classes de marques (22 marques EU)
+  # Classes du classificateur de marque : les 22 classes du modèle d'origine, écrites
+  # EXACTEMENT comme dans le modèle (label_encoder_classes du checkpoint, ordre alphabétique),
+  # c'est-à-dire les 22 dossiers du jeu VMMRdb_europe. Un modèle du registre apporte ses
+  # propres classes (classes.json); cette liste sert au compteur du réentraînement et de
+  # valeur par défaut. Les variantes d'écriture (« mercedes ») sont rapprochées par
+  # src/inference/brands.py:to_model_class.
   brand_classes:
     - audi
     - bmw
     - citroen
-    - dacia
-    - fiat
     - ford
     - honda
     - hyundai
+    - jaguar
     - kia
+    - landrover
     - mazda
-    - mercedes
+    - mercedes benz
+    - mini
+    - mitsubishi
     - nissan
-    - opel
     - peugeot
+    - porsche
     - renault
-    - seat
-    - skoda
+    - saab
     - suzuki
     - toyota
     - volkswagen
     - volvo
-    - other
   
   # Seuils de confiance
   thresholds:

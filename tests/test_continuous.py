@@ -98,6 +98,17 @@ def test_only_known_brands_are_counted():
     assert continuous.count_validated(storage, get_settings().models.brand_classes) == 2
 
 
+def test_counter_and_training_retain_the_same_images():
+    """Le compteur applique la même règle que l'entraînement (mercedes compté, dacia écarté)."""
+    from src.training.dataset import collect_validated, split_samples
+
+    classes = get_settings().models.brand_classes
+    storage = FakeStorage(["mercedes", "renault", "dacia", "jaguar"])
+    kept, rejected = split_samples(collect_validated(storage), classes)
+    assert continuous.count_validated(storage, classes) == len(kept) == 3
+    assert [s.label for s in rejected] == ["dacia"]
+
+
 def test_registry_remembers_last_training():
     registry = bootstrapped_registry()
     assert continuous.last_trained_count(registry) == 0

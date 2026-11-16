@@ -61,6 +61,35 @@ def test_base_dataset_is_collected_by_brand_folder(tmp_path):
     assert sorted(s.label for s in samples) == ["renault", "renault", "volkswagen", "volkswagen"]
 
 
+def test_labels_are_matched_to_exact_model_classes():
+    """« mercedes » (forme normalisée) correspond à la classe « mercedes benz » du modèle."""
+    from src.inference.brands import to_model_class
+
+    classes = ["audi", "landrover", "mercedes benz"]
+    assert to_model_class("mercedes", classes) == "mercedes benz"
+    assert to_model_class("Mercedes-Benz", classes) == "mercedes benz"
+    assert to_model_class("Land Rover", classes) == "landrover"
+    assert to_model_class("dacia", classes) is None
+
+    samples = [Sample("labeled/mercedes/a.jpg", "mercedes", "validated"),
+               Sample("socle/mercedes benz/b.jpg", "mercedes", "base"),
+               Sample("labeled/dacia/c.jpg", "dacia", "validated")]
+    kept, rejected = split_samples(samples, classes)
+    assert [s.label for s in kept] == ["mercedes benz", "mercedes benz"]      # nom exact du modèle
+    assert [s.label for s in rejected] == ["dacia"]
+
+
+def test_configured_classes_are_the_model_classes():
+    """La configuration décrit le modèle d'origine : 22 classes, noms exacts."""
+    from configs.settings import ModelSettings, get_settings
+
+    expected = ["audi", "bmw", "citroen", "ford", "honda", "hyundai", "jaguar", "kia", "landrover",
+                "mazda", "mercedes benz", "mini", "mitsubishi", "nissan", "peugeot", "porsche",
+                "renault", "saab", "suzuki", "toyota", "volkswagen", "volvo"]
+    assert get_settings().models.brand_classes == expected          # config.yaml
+    assert ModelSettings().brand_classes == expected                # valeur par défaut du code
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # MÉTRIQUES ET PROMOTION
 # ═══════════════════════════════════════════════════════════════════════════════

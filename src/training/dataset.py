@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence
 
-from src.inference.brands import normalize_brand
+from src.inference.brands import normalize_brand, to_model_class
 
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp"}
 LABELED_PREFIX = "labeled/"
@@ -75,13 +75,19 @@ def assign_split(identifier: str, test_fraction: float = 0.2) -> str:
 
 
 def split_samples(samples: Iterable[Sample], classes: Sequence[str], test_fraction: float = 0.2):
-    """Attribue les répartitions ; écarte les marques inconnues du modèle. → (retenus, écartés)"""
-    known = set(classes)
+    """
+    Attribue les répartitions - écarte les marques inconnues du modèle. --> (retenus, écartés)
+
+    L'étiquette d'un échantillon retenu devient le nom EXACT de la classe du modèle
+    (« mercedes » --> « mercedes benz ») : c'est ce nom qui sert à l'entraînement et au manifeste.
+    """
     kept, rejected = [], []
     for sample in samples:
-        if sample.label not in known:
+        model_class = to_model_class(sample.label, classes)
+        if model_class is None:
             rejected.append(sample)
             continue
+        sample.label = model_class
         sample.split = assign_split(sample.identifier, test_fraction)
         kept.append(sample)
     return kept, rejected
