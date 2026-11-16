@@ -37,6 +37,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from configs.settings import Settings, get_settings  # noqa: E402
+from src.inference.brands import to_model_class  # noqa: E402
 from src.mlops.registry import STATUSES_TO_JUDGE, VALIDATED_IMAGES_TAG, BrandModelRegistry, promotion_status  # noqa: E402
 from src.training.dataset import collect_validated  # noqa: E402
 
@@ -66,9 +67,8 @@ class TriggerDecision:
 
 
 def count_validated(storage, classes) -> int:
-    """Images validées dont la marque fait partie des classes du modèle."""
-    known = set(classes)
-    return sum(1 for s in collect_validated(storage) if s.label in known)
+    """Images validées dont la marque fait partie des classes du modèle (même règle que l'entraînement)."""
+    return sum(1 for s in collect_validated(storage) if to_model_class(s.label, classes) is not None)
 
 
 def last_trained_count(registry: BrandModelRegistry) -> int:
