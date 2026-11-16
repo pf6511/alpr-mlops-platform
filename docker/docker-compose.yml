@@ -62,6 +62,9 @@ services:
     ports:
       - "7860:7860"
     depends_on:
+      # La base est indispensable (résidents, journal) : attendre qu'elle soit prête
+      postgres:
+        condition: service_healthy
       # Facultatifs : inutiles quand S3 et MLflow sont dans le cloud
       minio:
         condition: service_started
