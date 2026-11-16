@@ -95,3 +95,71 @@ def test_existing_database_is_migrated(tmp_path):
     assert log["plaque"] == "AB123CD"
     assert {"image_key", "validation_status", "validated_label", "validated_at"} <= set(log)
     assert len(db.get_mismatch_logs()) == 1          # l'ancienne incohérence reste en attente
+
+
+def test_stored_images_carry_no_plate(tmp_path):
+    """Pseudonymisation : ni la capture ni l'image validée ne portent la plaque dans leur nom."""
+    import re
+
+    db, storage, detector, service = make_loop(tmp_path)
+    random_name = re.compile(r"^[0-9a-f]{32}\.jpg$")                # identifiant aléatoire (UUID4)
+
+    # Capture de l'incohérence : mismatches/<date>/<identifiant>.jpg
+    key = service.process(make_image()).mismatch_image_key
+    assert "AB123CD" not in key
+    assert key.startswith("mismatches/") and random_name.match(Path(key).name)
+
+    # Image validée : labeled/<marque>/<identifiant>.jpg, sans plaque ni horodatage
+    ValidationService(detector).act("AB123CD", VALIDATE_DECLARED)
+    labeled = list((storage.local_paths["dataset"] / "labeled" / "peugeot").glob("*.jpg"))
+    assert len(labeled) == 1
+    assert random_name.match(labeled[0].name)
+
+
+def test_anonymous_names_are_unique():
+    from src.data.storage import anonymous_image_name
+
+    names = {anonymous_image_name() for _ in range(1000)}
+    assert len(names) == 1000
+
+
+def test_validation_sends_error_metadata(tmp_path):
+    """La validation transmet la prédiction et la marque déclarée, sans horodatage ni validateur."""
+    db, storage, detector, service = make_loop(tmp_path)
+    service.process(make_image())
+
+    sent = {}
+    original = storage.save_labeled_image
+
+    def spy(image, label, confidence=None, metadata=None):
+        sent.update(metadata or {})
+        return original(image, label, confidence=confidence, metadata=metadata)
+
+    storage.save_labeled_image = spy
+    ValidationService(detector).act("AB123CD", VALIDATE_DECLARED)
+    assert sent == {"original_prediction": "renault", "declared": "peugeot"}
+
+
+def test_labeled_metadata_reaches_s3_without_passage_data():
+    """En S3, les métadonnées sont bien enregistrées, filtrées par la liste blanche."""
+    from PIL import Image
+
+    class FakeS3:
+        def upload_fileobj(self, buffer, bucket, key, ExtraArgs=None):
+            self.extra_args = ExtraArgs
+
+    storage = StorageManager()
+    storage.mode, storage.s3_client = "s3", FakeS3()
+
+    success, _ = storage.save_labeled_image(
+        Image.new("RGB", (8, 8)), "mazda", confidence=0.588,
+        metadata={"original_prediction": "hyundai", "declared": "mazda",
+                  # données de passage : doivent être écartées
+                  "validated_by": "operator", "validated_at": "2026-11-14T12:00:00", "plaque": "AB123CD"},
+    )
+    assert success
+    assert storage.s3_client.extra_args["Metadata"] == {
+        "label": "mazda", "original_confidence": "0.588",
+        "original_prediction": "hyundai", "declared": "mazda",
+    }
+    assert storage.s3_client.extra_args["ContentType"] == "image/jpeg"

@@ -15,6 +15,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from configs.settings import get_settings
+from src.data.storage import anonymous_image_name
 from src.inference.brands import is_brand_mismatch, normalize_brand
 
 # Imports optionnels
@@ -36,6 +37,11 @@ try:
     STORAGE_AVAILABLE = True
 except ImportError:
     STORAGE_AVAILABLE = False
+
+
+def _brand_or_none(brand: Optional[str]) -> Optional[str]:
+    """Marque normalisée (« Citroën » → « citroen »), ou None si absente."""
+    return normalize_brand(brand) if brand else None
 
 
 @dataclass
@@ -158,10 +164,10 @@ class MismatchDetector:
         # Sauvegarder l'image vers S3/local
         if vehicle_crop is not None and self.storage and NUMPY_AVAILABLE:
             try:
-                # Générer le chemin
+                # Générer le chemin : nom aléatoire, sans la plaque (pseudonymisation).
+                # Le lien avec le passage est la colonne logs.image_key (en base, sur site).
                 date_str = datetime.now().strftime("%Y%m%d")
-                safe_plaque = plaque.replace("-", "").replace(" ", "")
-                key = f"mismatches/{date_str}/{safe_plaque}_{datetime.now().strftime('%H%M%S')}.jpg"
+                key = f"mismatches/{date_str}/{anonymous_image_name()}"
                 
                 # Upload
                 success, result = self.storage.upload_image(
@@ -302,13 +308,12 @@ class MismatchDetector:
             success, result = self.storage.save_labeled_image(
                 image=image.convert('RGB'),
                 label=label,
-                plaque=record.plaque,
                 confidence=record.confiance,
+                # Pour l'analyse des erreurs du modèle ; ni horodatage ni validateur
+                # (ils permettraient de retrouver le passage dans la table logs)
                 metadata={
-                    'original_prediction': record.marque_predite,
-                    'declared': record.marque_declaree,
-                    'validated_by': validator,
-                    'validated_at': datetime.now().isoformat()
+                    'original_prediction': _brand_or_none(record.marque_predite),
+                    'declared': _brand_or_none(record.marque_declaree),
                 }
             )
             if success:
