@@ -23,7 +23,7 @@ git clone -b dev_pieric https://github.com/pf6511/alpr-mlops-platform
 | MLOps | Registre MLflow (alias `champion` / `challenger`), paquets de modèle sans code, manifeste de lignage, règle de promotion explicite |
 | Réentraînement automatique | Cycle déclenché par les données (≥ 20 nouvelles images validées), orchestré par Airflow ; l'application charge le nouveau champion sans redémarrer |
 | Monitoring | Chaque passage est journalisé avec ses mesures ; rapport quotidien (Airflow) : indicateurs, seuils du cahier des charges, dérive des données (Evidently) ; alerte si un seuil est dépassé |
-| RGPD | Image conservée seulement en cas d'incohérence, supprimée à 30 jours par le stockage (cycle de vie S3) |
+| RGPD | Image conservée seulement en cas d'incohérence, plaque masquée et nom aléatoire, supprimée à 30 jours par le stockage (cycle de vie S3) ; jeu d'entraînement anonymisé (aucun lien avec le passage) |
 | CI/CD | GitHub Actions : tests à chaque push et pull request, puis publication de l'image sur GHCR |
 
 ## 🏗️ Architecture
@@ -81,12 +81,61 @@ docker compose up -d             # application, PostgreSQL, MinIO
 | Airflow (`admin` / `AIRFLOW_PASSWORD`, `admin` par défaut) | http://localhost:8080 | `docker compose --profile airflow up -d airflow` |
 | Réentraînement planifié (sans Airflow) | — | `docker compose --profile mlops up -d alpr-retrain` |
 
+**Première installation** (une fois la stack démarrée) :
+
+```bash
+docker compose exec alpr-engine python -m src.data.retention --apply   # suppression des captures à 30 jours (RGPD)
+docker compose exec alpr-engine python -m src.data.retention           # vérifie la règle en place
+docker compose exec alpr-engine python -m src.mlops.bootstrap          # si MODEL_BRAND_SOURCE=registry : v1 champion
+```
+
+La règle de conservation est portée par le bucket MinIO : à reposer après toute recréation du stockage (`down -v`).
+
 **Production** : l'image publiée par la CI/CD remplace le build local et le code n'est plus monté.
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
+
+## 🧰 Commandes essentielles
+
+Depuis le dossier `docker/`. Les services `alpr-api`, `alpr-retrain` et `airflow` ont un profil : les commandes globales doivent nommer les profils.
+
+**Conteneurs**
+
+| Commande | Effet |
+|---|---|
+| `docker compose up -d alpr-engine` | Démarre l'application (PostgreSQL démarre d'abord) |
+| `docker compose --profile api up -d alpr-api` | Démarre l'API REST |
+| `docker compose --profile airflow up -d airflow` | Démarre Airflow |
+| `docker compose ps` | État des conteneurs (`healthy` après environ 1 min) |
+| `docker compose logs --tail 50 alpr-engine` | Derniers journaux d'un service |
+| `docker compose restart alpr-engine` | Recharge le code modifié (monté en lecture seule) |
+| `docker compose --profile full --profile mlops --profile airflow stop` | Arrête tout |
+| `docker compose --profile full --profile mlops --profile airflow down -v` | ⚠️ Supprime conteneurs **et données** (base, MinIO, caches) |
+
+**Tests et qualité** (à la racine du dépôt)
+
+```bash
+# Suite complète dans l'image (root : écriture des fichiers temporaires dans le code monté)
+docker run --rm -u root -v "${PWD}:/app" -w /app alpr-engine:local python -m pytest tests -q
+
+# Un seul test, trace courte
+docker run --rm -u root -v "${PWD}:/app" -w /app alpr-engine:local python -m pytest tests/test_privacy.py -q --tb=short
+
+# Analyse statique (noms non définis, imports inutilisés)
+ruff check .github tests airflow
+```
+
+**Fichiers dans le conteneur**
+
+```bash
+docker cp alpr-engine:/app/data/monitoring ./monitoring    # récupérer les rapports
+docker compose exec -u root alpr-engine rm -rf /app/data/base   # supprimer un dossier copié par docker cp (propriétaire root)
+```
+
+Sous Windows, utiliser `127.0.0.1` plutôt que `localhost` pour joindre les ports publiés.
 
 ## 🔌 API REST
 
@@ -142,6 +191,21 @@ Limite : le taux d'erreur ne porte que sur les incohérences validées par l'op�
 | `python -m src.monitoring.demo_data [--delete]` | Insère ou supprime les passages de démonstration |
 | `python -m pipelines.inference_pipeline <image>` | Inférence en ligne de commande |
 
+Le cycle automatique s'entraîne sur les seules images validées (`labeled/<marque>/`). Pour y ajouter le **socle de référence** (jeu public VMMRdb Europe, dont les 22 dossiers sont les 22 classes du modèle), l'entraînement se lance à la main :
+
+```powershell
+# 1. Socle reproductible : les 15 premières images de chaque marque (Windows, PowerShell)
+powershell -ExecutionPolicy Bypass -File .\scripts\build_socle.ps1 -Source "C:\...\VMMRdb_europe" -Destination "C:\...\socle"
+
+# 2. Copie dans le conteneur, entraînement, promotion
+docker compose exec -u root alpr-engine rm -rf /app/data/base
+docker cp C:\...\socle alpr-engine:/app/data/base
+docker compose exec alpr-engine python -m src.training.train --base-dir data/base
+docker compose exec alpr-engine python -m src.mlops.promote
+```
+
+Lancés à la main, `train` et `promote` ne prennent pas le verrou du cycle : arrêter `alpr-retrain` au préalable. Le manifeste de chaque version liste les images utilisées (`counts.by_origin`, `test_set`) et les marques écartées (`rejected_unknown_labels`).
+
 ## ⚙️ Configuration
 
 Les valeurs sont dans `configs/config.yaml` (seuils, buckets, `retention`, `continuous_training`, `monitoring`, `mlflow`) et se surchargent par variables d'environnement. Principales variables (`docker/env.cloud.example`) :
@@ -159,7 +223,7 @@ Les valeurs sont dans `configs/config.yaml` (seuils, buckets, `retention`, `cont
 ## 🧪 Tests et CI/CD
 
 ```bash
-python -m pytest tests -q
+python -m pytest tests -q        # environnement Python local ; dans Docker : voir « Commandes essentielles »
 ```
 
 `.github/workflows/ci.yml` : à chaque push et pull request, lint, build des images, démarrage de la stack, test HTTP de l'interface, démarrage de l'API (santé, refus sans clé) et suite de tests (dont le cycle MLOps complet avec un vrai MLflow). Après une CI verte sur `dev_pieric`, `dev` ou `main`, le job `publish-image` publie `ghcr.io/pf6511/alpr-engine` (étiquettes de branche et `sha-<commit>`).
@@ -171,7 +235,7 @@ python -m pytest tests -q
 | YOLO (`best_model_detection_plaque.pt`) | Trouver la plaque | Fichier du dépôt |
 | fast-plate-ocr (`global-plates-mobile-vit-v2-model`) | Lire la plaque | Pré-entraîné, téléchargé |
 | YOLOv8s COCO | Trouver le véhicule | Pré-entraîné, téléchargé |
-| EfficientNet B0, 22 marques | Reconnaître la marque | Registre MLflow (champion), repli `models/best_model_efficientNet_finetune.pth` |
+| EfficientNet B0, 22 marques (classes du jeu VMMRdb Europe) | Reconnaître la marque | Registre MLflow (champion), repli `models/best_model_efficientNet_finetune.pth` |
 
 ## 📝 License
 

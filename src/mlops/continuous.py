@@ -71,8 +71,9 @@ def count_validated(storage, classes) -> int:
     return sum(1 for s in collect_validated(storage) if to_model_class(s.label, classes) is not None)
 
 
-def last_trained_count(registry: BrandModelRegistry) -> int:
-    """Images validées utilisées par l'entraînement le plus récent (0 si aucun)."""
+def validated_images_already_trained(registry: BrandModelRegistry) -> int:
+    """Images validées utilisées par l'entraînement le plus récent (0 si aucun).
+    Plus grand nombre d’images validées vu par un entraînement (= le plus récent, tant que les images validées ne sont jamais supprimées)"""
     counts = [int(v.tags[VALIDATED_IMAGES_TAG]) for v in registry.versions()
               if str(v.tags.get(VALIDATED_IMAGES_TAG, "")).isdigit()]
     return max(counts, default=0)
@@ -101,14 +102,14 @@ def check(settings: Optional[Settings] = None, storage=None,
     if pending_challenger(registry, settings) is not None:
         return {"run": True, "reason": "challenger en attente de promotion"}
     decision = decide_trigger(count_validated(storage, settings.models.brand_classes),
-                              last_trained_count(registry), settings.continuous.min_new_images)
+                              validated_images_already_trained(registry), settings.continuous.min_new_images)
     return asdict(decision) | {"new_images": decision.new_images}
 
 
 def retraining_progress(settings: Settings, storage, registry: BrandModelRegistry) -> Dict[str, Any]:
     """Où en est le prochain réentraînement ? (affiché dans l'onglet Validation)."""
     decision = decide_trigger(count_validated(storage, settings.models.brand_classes),
-                              last_trained_count(registry), settings.continuous.min_new_images)
+                              validated_images_already_trained(registry), settings.continuous.min_new_images)
     return {"new_images": decision.new_images, "threshold": settings.continuous.min_new_images,
             "validated_images": decision.validated_images, "will_retrain": decision.run}
 
@@ -163,14 +164,15 @@ def run_cycle(settings: Optional[Settings] = None, storage=None, registry: Optio
         return _promote(report, settings, storage, registry, promote_fn)
 
     # 1-3. Faut-il réentraîner ? => PAS de challenger en attente (sinon cas traité ci-dessus)
+    # s'il y a plus de min_new_images validées / max nombres d'images validées ayant déjà servies à l'entraînement
     decision = decide_trigger(count_validated(storage, settings.models.brand_classes),
-                              last_trained_count(registry), cfg.min_new_images, force)
+                              validated_images_already_trained(registry), cfg.min_new_images, force)
     report["trigger"] = asdict(decision) | {"new_images": decision.new_images}
     if not decision.run:
         report["status"] = "skipped"
         return _finish(report)
 
-    # 4. Entraînement → challenger (donc si challenger existant il est « promoted » ou « rejected »)
+    # 4. Entraînement --> challenger (donc si challenger existant il est « promoted » ou « rejected »)
     try:
         report["training"] = train_fn(settings, storage, registry, epochs=cfg.epochs,
                                       min_train_images=cfg.min_train_images)
@@ -182,8 +184,11 @@ def run_cycle(settings: Optional[Settings] = None, storage=None, registry: Optio
 
 
 def pending_challenger(registry: BrandModelRegistry, settings: Settings):
-    """Challenger dont le statut demande un jugement (« pending »), ou None."""
+    """Challenger dont le statut demande un jugement (« pending ») et
+    ça n'est pas aussi le champion , ou None."""
     challenger = registry.get(settings.mlflow.challenger_alias)
+    # challenger is None juste après le bootstrap qui créé un champion
+    # alias challenger retiré manuellement
     if challenger is None or promotion_status(challenger.tags) not in STATUSES_TO_JUDGE:
         return None
     champion = registry.get(settings.mlflow.champion_alias)

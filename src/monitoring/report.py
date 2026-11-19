@@ -194,7 +194,7 @@ def drifted_share(result: Dict[str, Any]) -> Optional[float]:
 
 def run(now: Optional[datetime] = None, with_drift: bool = True, db=None,
         settings: Optional[MonitoringSettings] = None) -> Dict[str, Any]:
-    """Un rapport complet : lecture → périodes → indicateurs → seuils → dérive → historique."""
+    """Un rapport complet : lecture --> périodes --> indicateurs --> seuils --> dérive --> historique."""
     settings = settings or get_settings().monitoring
     now = now or datetime.now()
     since = now - timedelta(days=settings.current_days + settings.reference_days)

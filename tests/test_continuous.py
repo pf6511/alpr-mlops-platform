@@ -111,10 +111,10 @@ def test_counter_and_training_retain_the_same_images():
 
 def test_registry_remembers_last_training():
     registry = bootstrapped_registry()
-    assert continuous.last_trained_count(registry) == 0
+    assert continuous.validated_images_already_trained(registry) == 0
     registry.add(tags={VALIDATED_IMAGES_TAG: "40"})
     registry.add(tags={VALIDATED_IMAGES_TAG: "25"})
-    assert continuous.last_trained_count(registry) == 40
+    assert continuous.validated_images_already_trained(registry) == 40
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
