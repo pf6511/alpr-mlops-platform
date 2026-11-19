@@ -193,7 +193,7 @@ def read_local_checkpoint(path: Path, default_classes: Sequence[str], device: st
 
 
 def read_bundle(directory: Path, device: str = "cpu"):
-    """Lit un paquet du registre → (state_dict, classes, manifeste). Aucun code n'est exécuté."""
+    """Lit un paquet du registre --> (state_dict, classes, manifeste). Aucun code n'est exécuté."""
     import json
 
     import torch

@@ -115,10 +115,10 @@ def run_promotion(settings: Optional[Settings] = None, storage=None, registry: O
     with tempfile.TemporaryDirectory() as tmp:
         items, missing = _test_items(manifest, classes, storage, Path(tmp))
         targets = [t for _, t in items]
-        challenger_m = classification_metrics(brand_trainer.predict(challenger_state, classes, items), targets, classes)
-        champion_m = classification_metrics(brand_trainer.predict(champion_state, classes, items), targets, classes)
+        challenger_metrics = classification_metrics(brand_trainer.predict(challenger_state, classes, items), targets, classes)
+        champion_metrics = classification_metrics(brand_trainer.predict(champion_state, classes, items), targets, classes)
 
-    decision = decide_promotion(champion_m, challenger_m, min_test_images, f1_tolerance)
+    decision = decide_promotion(champion_metrics, challenger_metrics, min_test_images, f1_tolerance)
     status = STATUS_PROMOTED if decision.promote else STATUS_REJECTED
     record_decision(registry, challenger_ref.version, status, decision.reason)
     if decision.promote:
@@ -138,7 +138,7 @@ def run_promotion(settings: Optional[Settings] = None, storage=None, registry: O
         "challenger_version": challenger_ref.version,
         "champion_version_before": champion_ref.version if champion_ref else None,
         "test_images": len(items), "test_images_missing": missing,
-        "metrics": {"challenger": challenger_m, "champion": champion_m},
+        "metrics": {"challenger": challenger_metrics, "champion": champion_metrics},
         "decision": asdict(decision),
     }
 
