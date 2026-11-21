@@ -14,6 +14,7 @@ on:
       - micka2
       - "feature/**"
       - "refactor/**"
+      - "fix/**"
   pull_request:
     branches:
       - main
